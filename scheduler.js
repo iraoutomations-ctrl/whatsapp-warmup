@@ -13,6 +13,7 @@ class WarmupScheduler {
     this.activeTimeoutId = null;
     this.queueIntervalId = null;
     this.dayCheckIntervalId = null;
+    this.spontaneousCheckInTimeoutId = null;
   }
 
   async init() {
@@ -35,6 +36,9 @@ class WarmupScheduler {
 
     // Run a quick status check 10 seconds after startup
     setTimeout(() => this.checkAndPostDailyStatus(), 10 * 1000);
+
+    // Start random spontaneous check-ins (opening WhatsApp without messaging)
+    this.scheduleNextSpontaneousCheckIn();
 
     await db.addLog('info', 'Warmup Scheduler initialized and active loop scheduled.');
   }
@@ -491,12 +495,78 @@ class WarmupScheduler {
   }
 
   /**
+   * Schedules the next spontaneous app check-in.
+   */
+  scheduleNextSpontaneousCheckIn() {
+    if (this.spontaneousCheckInTimeoutId) clearTimeout(this.spontaneousCheckInTimeoutId);
+
+    const config = getConfig();
+    if (!config.warmupEnabled) return;
+
+    // Schedule next check-in in 20 to 60 minutes
+    const delayMinutes = Math.floor(Math.random() * 41) + 20;
+    const delayMs = delayMinutes * 60 * 1000;
+
+    console.log(`Scheduling next spontaneous check-in in ${delayMinutes} minutes.`);
+
+    this.spontaneousCheckInTimeoutId = setTimeout(() => {
+      this.performSpontaneousCheckIn();
+    }, delayMs);
+  }
+
+  /**
+   * Performs a random app open simulation (goes online for a random short period).
+   */
+  async performSpontaneousCheckIn() {
+    try {
+      const config = getConfig();
+      if (!config.warmupEnabled) {
+        this.scheduleNextSpontaneousCheckIn();
+        return;
+      }
+
+      if (config.nightRestEnabled && isNightTime()) {
+        console.log('Spontaneous check-in skipped: Night rest mode active.');
+        this.scheduleNextSpontaneousCheckIn();
+        return;
+      }
+
+      const contacts = db.getContacts().filter(c => c.enabled);
+      if (contacts.length === 0) {
+        this.scheduleNextSpontaneousCheckIn();
+        return;
+      }
+
+      // Pick a random enabled contact to target the presence state
+      const contact = contacts[Math.floor(Math.random() * contacts.length)];
+      
+      // Random duration online: 15 to 50 seconds
+      const durationSeconds = Math.floor(Math.random() * 36) + 15;
+      const durationMs = durationSeconds * 1000;
+
+      await db.addLog('info', `Simulating spontaneous app open: Going Online for ${durationSeconds} seconds.`);
+      
+      // Go Online (available)
+      await sendTypingState(contact.phone, 'available', durationMs);
+      
+      // Go Offline (unavailable)
+      await sendTypingState(contact.phone, 'unavailable', 500);
+
+    } catch (err) {
+      console.error('Error during spontaneous check-in:', err);
+    } finally {
+      this.scheduleNextSpontaneousCheckIn();
+    }
+  }
+
+  /**
    * Shuts down all intervals and timers.
    */
   destroy() {
     if (this.activeTimeoutId) clearTimeout(this.activeTimeoutId);
     if (this.queueIntervalId) clearInterval(this.queueIntervalId);
     if (this.dayCheckIntervalId) clearInterval(this.dayCheckIntervalId);
+    if (this.spontaneousCheckInTimeoutId) clearTimeout(this.spontaneousCheckInTimeoutId);
   }
 }
 
