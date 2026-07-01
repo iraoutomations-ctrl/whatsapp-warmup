@@ -241,9 +241,7 @@ export async function sendReaction(number, emoji, msgKeyOrId) {
   try {
     const payload = {
       key: keyPayload,
-      reaction: {
-        text: emoji
-      }
+      reaction: emoji
     };
     const result = await callEvolutionAPI('/message/sendReaction', 'POST', payload, true); // throwError = true
     if (result.success) {
