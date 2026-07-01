@@ -152,18 +152,21 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     // to return the HTTP response immediately to the Evolution API webhook dispatcher
     setTimeout(async () => {
       try {
-        // 1. Wait a random human delay (3 to 7 seconds) before opening the message (blue checks appear)
+        // 1. Wait a random human delay (3 to 7 seconds) before opening the app
         const readDelay = Math.floor(Math.random() * 4000) + 3000;
-        console.log(`Delaying read receipt for ${phone} by ${readDelay}ms`);
+        console.log(`Delaying app open simulation for ${phone} by ${readDelay}ms`);
         await new Promise(resolve => setTimeout(resolve, readDelay));
 
-        // 2. Mark message as read (V כחול)
+        // 2. Go "Online" (available) to simulate opening the app
+        await sendTypingState(phone, 'available', 1500);
+
+        // 3. Mark message as read (V כחול)
         await markRead(remoteJid, data.key);
 
-        // 3. Wait a short delay before starting to type (simulate reading comprehension delay: 1 to 2 seconds)
+        // 4. Wait a short delay before starting to type (simulate reading: 1.5 seconds)
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // 4. Send reaction or message reply
+        // 5. Send reaction or message reply
         const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
         if (reactionMatch) {
           const emoji = reactionMatch[1].trim();
@@ -179,6 +182,9 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
           // sendMessage will simulate typing based on text length (2s - 6s)
           await sendMessage(phone, replyText, true);
         }
+
+        // 6. Go "Offline" (unavailable) to simulate closing the app
+        await sendTypingState(phone, 'unavailable', 500);
       } catch (err) {
         console.error('Error in asynchronous reply pipeline:', err);
       }
