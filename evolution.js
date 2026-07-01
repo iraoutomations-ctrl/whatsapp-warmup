@@ -304,14 +304,50 @@ export async function sendMedia(number, base64Data, mediaType = 'image', fileNam
 }
 
 /**
+ * Sends a status update (text or media) to WhatsApp Status/Stories.
+ */
+export async function sendStatus(type, content, caption = '') {
+  console.log(`Publishing WhatsApp status: type=${type}, caption="${caption}"`);
+  
+  try {
+    const payload = {
+      statusMessage: {
+        type: type,
+        content: content,
+        caption: caption,
+        allContacts: true
+      }
+    };
+    
+    const flatPayload = {
+      type: type,
+      content: content,
+      caption: caption,
+      allContacts: true
+    };
+    
+    try {
+      const result = await callEvolutionAPI('/message/sendStatus', 'POST', payload, true);
+      return result.success || result.mock;
+    } catch (err) {
+      console.log(`Wrapped sendStatus failed: ${err.message}, trying flat format...`);
+      const result = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload, true);
+      return result.success || result.mock;
+    }
+  } catch (err) {
+    console.error('Failed to publish status via sendStatus API:', err.message);
+    await db.addLog('error', `Failed to publish WhatsApp status: ${err.message}`);
+  }
+  return false;
+}
+
+/**
  * Posts a text status update to WhatsApp Status.
  */
 export async function sendStatusText(text) {
   console.log(`Posting text status: "${text}"`);
   await db.addLog('info', `Posting WhatsApp text status update: ${text}`);
-  
-  // To post status, we send a text message to "status@broadcast" JID.
-  return await sendMessage('status@broadcast', text, false);
+  return await sendStatus('text', text);
 }
 
 /**
@@ -325,7 +361,7 @@ export async function sendStatusImage(localImagePath, caption = '') {
     const fileData = await fs.readFile(localImagePath, 'base64');
     const base64Data = `data:image/png;base64,${fileData}`;
     
-    return await sendMedia('status@broadcast', base64Data, 'image', 'status.png', caption);
+    return await sendStatus('image', base64Data, caption);
   } catch (err) {
     console.error('Failed to read local status image file:', err);
     await db.addLog('error', `Failed to post status image: ${err.message}`);
