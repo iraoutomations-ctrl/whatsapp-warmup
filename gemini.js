@@ -183,21 +183,23 @@ export async function generateGroupReply(senderName, messageText) {
  */
 export async function generateStatusText(timePeriod = 'morning') {
   const systemPrompt = `
-אתה כותב סטטוס וואטסאפ (Story) קצר, חיובי וספונטני בעברית עבור עובד במשרד יוזמה.
-מטרת הסטטוס היא לדמות פעילות אנושית טבעית בוואטסאפ.
+אתה מייצג מפתח אוטומציות וסוכן AI מנוסה ממשרד יוזמה (סוכנות אוטומציה).
+אתה כותב סטטוס וואטסאפ (Story) קצר, מסקרן וספונטני בעברית.
+הסטטוס צריך לשתף מחשבה, שאלה, טיפ או עובדה קצרה על בינה מלאכותית (AI), עתיד הטכנולוגיה, או אוטומציה של תהליכים בעסקים, בשילוב קל עם סדר היום שלך.
 
 חוקים נוקשים:
-1. קצר מאוד (משפט אחד, 2 עד 6 מילים).
-2. שפה טבעית, יומיומית, ספונטנית.
-3. הסטטוס חייב להתאים לתקופת הזמן הנוכחית ביום: "${timePeriod}".
-   - עבור "morning": קפה של בוקר, נסיעה למשרד, מוטיבציה לעבודה, בוקר טוב.
-   - עבור "afternoon": עומס עבודה, עייפות של אחרי צהריים, ארוחת צהריים, הפסקת קפה קצרה.
-   - עבור "evening": תוכניות לערב, לצאת מהמשרד לבית, שקיעה יפה, סיכום יום מוצלח.
-   - עבור "night": מנוחה בבית, לילה טוב, עייפות של סוף יום, שקט של לילה.
-4. ללא סימני קריאה מוגזמים, ללא פניות רשמיות. מותר לשלב אימוג'י בודד בסוף.
+1. קצר וקולע (משפט אחד או שניים, 4 עד 12 מילים).
+2. שפה מדוברת, מגניבה, חברותית וטבעית לחלוטין (כגון: "סוכני AI זה העתיד", "מישהו כבר ניסה את הכלי החדש?", "אוטומציה טובה חוסכת שעות").
+3. שלב בין:
+   - מחשבות על AI ואוטומציה (למשל: יתרונות של אוטומציות לעסקים, טיפים לשימוש ב-AI, סקרנות לגבי כלים חדשים).
+   - סדר היום הנוכחי: "${timePeriod}".
+     - בבוקר: מוטיבציה, להתחיל לבנות אוטומציות עם קפה ☕.
+     - בצהריים: כתיבת קוד, אוטומציה שרצה ברקע, כלי AI שמקצר עבודה.
+     - בערב/לילה: סוגרים משימות, מנוחה, ה-AI עובד בשבילנו בזמן שישנים 😴.
+4. ללא סימני קריאה מוגזמים. מותר לשלב אימוג'י בודד ומתאים.
 `;
 
-  const userPrompt = `נסח סטטוס וואטסאפ טקסטואלי ספונטני אחד בעברית שמתאים לתקופת זמן: ${timePeriod}. אל תוסיף שום הסבר, אלא רק את המשפט עצמו.`;
+  const userPrompt = `נסח סטטוס וואטסאפ ספונטני אחד בעברית על AI/אוטומציות או עבודה שמתאים לזמן: ${timePeriod}. אל תוסיף שום הסבר, רק את המשפט עצמו.`;
   try {
     return await callGemini(systemPrompt, userPrompt, 0.85);
   } catch (e) {
@@ -210,36 +212,38 @@ export async function generateStatusText(timePeriod = 'morning') {
  */
 export async function generateStatusCaption(imageTopic) {
   const systemPrompt = `
-אתה כותב כיתוב (Caption) קצר ותואם בעברית לתמונה שמועלית לסטטוס וואטסאפ (Story) של עובד משרד יוזמה.
-מטרת הסטטוס היא לדמות פעילות אנושית טבעית.
+אתה כותב כיתוב (Caption) קצר, מתוחכם וספונטני בעברית לתמונה שמועלית לסטטוס וואטסאפ (Story) של מפתח אוטומציות וסוכני AI ממשרד יוזמה.
+המטרה היא להגיב על נושא התמונה בצורה שתסקרן אנשים ותעורר מחשבה או חיוך סביב עבודה, אוטומציה ובינה מלאכותית.
 
 חוקים נוקשים:
-1. קצר מאוד (משפט אחד, עד 8 מילים).
-2. שפה טבעית ויומיומית.
-3. התאם את הכיתוב לנושא התמונה (למשל: כוס קפה של בוקר, חתול משרדי ישן, רובוט עבודה, נוף של תל אביב בזריחה).
-4. מותר לשלב אימוג'י בודד.
+1. קצר מאוד (משפט אחד, 4 עד 9 מילים).
+2. טון חברותי, קליל, מקצועי אך בגובה העיניים.
+3. התאם את הכיתוב בצורה מושלמת לנושא של התמונה המופיע באנגלית (למשל: אם מדובר ברובוט כותב קוד ➔ "העובד הכי חרוץ במשרד 🤖", אם מדובר במחשב בלילה ➔ "אוטומציה טובה עובדת גם כשישנים 💻", אם מדובר בטכנולוגיה עתידית ➔ "העתיד של העסקים כבר כאן").
+4. מותר לשלב אימוג'י בודד ומתאים.
 `;
 
-  const userPrompt = `נושא התמונה הוא: "${imageTopic}". נסח כיתוב מתאים וספונטני בעברית. אל תוסיף הסברים או גרשיים.`;
+  const userPrompt = `נושא התמונה באנגלית הוא: "${imageTopic}". נסח כיתוב מתאים וספונטני בעברית על AI/אוטומציות/סגנון חיים. אל תוסיף הסברים או גרשיים.`;
   return await callGemini(systemPrompt, userPrompt, 0.85);
 }
 
 /**
  * Generates a random image prompt in English for AI image generation.
  */
-export async function generateImagePrompt() {
+export async function generateImagePrompt(timePeriod = 'morning') {
   const systemPrompt = `
-You are an expert at writing prompts for text-to-image AI generators.
-Your task is to write a short, photorealistic, smartphone-shot image prompt in English representing a casual daily scene from the perspective of an office worker in Israel.
+You are an expert at writing prompts for text-to-image AI generators (like Midjourney, Flux, Stable Diffusion).
+Your task is to write a short, high-quality, photorealistic or digital-art image prompt in English representing a casual daily scene from the perspective of an AI automation developer in Israel, combined with futuristic tech.
 
 Guidelines:
-1. Keep it short (5 to 12 words).
-2. Topics: a cup of coffee, office workspace, beautiful view of Tel Aviv beach or skyline, laptop keyboard, cozy office lounge, afternoon snack, or Israeli street view.
-3. Styles: Photorealistic, warm lighting, cozy atmosphere, shot on smartphone.
+1. Keep it short (5 to 15 words).
+2. Topics should be a mix of:
+   - Futuristic AI & Automation concepts: a cute tiny robot coding on a glowing screen, a futuristic desk with glowing holograms of data/neural network, AI brain graphic on a curved computer monitor, neon cyberpunk workstation.
+   - Cozy developer lifestyle: coding desk at ${timePeriod}, coffee next to a coding laptop, sunset view of Tel Aviv from developer office window.
+3. Styles: Photorealistic, warm cinematic lighting, cozy high-tech atmosphere, 8k, sharp focus.
 
 Strict Rule: Output ONLY the prompt itself in English, nothing else! No explanations, no quotes.
 `;
-  const userPrompt = `Generate a random photo prompt.`;
+  const userPrompt = `Generate a random image prompt for the ${timePeriod}.`;
   try {
     return await callGemini(systemPrompt, userPrompt, 0.9);
   } catch (e) {
