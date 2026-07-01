@@ -312,7 +312,7 @@ class WarmupScheduler {
     await db.addLog('info', 'Initiating WhatsApp Status update post...');
 
     try {
-      const chooseImage = Math.random() > 0.5; // 50% chance of image status, 50% text status
+      const chooseImage = Math.random() > 0.8; // 20% chance of image status, 80% text status
       
       if (chooseImage) {
         // Pick random image from local folder
