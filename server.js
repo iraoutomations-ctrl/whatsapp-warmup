@@ -137,8 +137,8 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       return res.json({ status: 'success', detail: 'Read only, warmup disabled' });
     }
 
-    // Check night rest mode
-    if (isNightTime()) {
+    // Check night rest mode (only if enabled in dashboard settings)
+    if (config.nightRestEnabled && isNightTime()) {
       await scheduler.queueNightMessage(phone, messageText, contact.name);
       return res.json({ status: 'success', detail: 'Queued for morning' });
     }

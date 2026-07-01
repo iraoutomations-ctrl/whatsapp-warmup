@@ -97,9 +97,8 @@ class WarmupScheduler {
       return;
     }
 
-    if (isNightTime()) {
-      console.log('Active warmup cycle skipped: Night rest mode is active.');
-      await db.addLog('info', 'Active warmup skipped: Night rest hours.');
+    if (config.nightRestEnabled && isNightTime()) {
+      console.log('Active warmup loop: Night rest mode active. Skipping active message.');
       return;
     }
 
@@ -180,7 +179,8 @@ class WarmupScheduler {
    * Periodically checks the overnight queue and dispatches replies when day mode starts.
    */
   async processNightQueue() {
-    if (isNightTime()) return;
+    const config = getConfig();
+    if (config.nightRestEnabled && isNightTime()) return;
 
     const settings = db.getSettings();
     const nightQueue = settings.nightQueue || [];
@@ -282,7 +282,7 @@ class WarmupScheduler {
   async checkAndPostDailyStatus() {
     const config = getConfig();
     if (!config.warmupEnabled) return;
-    if (isNightTime()) return;
+    if (config.nightRestEnabled && isNightTime()) return;
 
     const today = db.getTodayDateString();
     const settings = db.getSettings();
@@ -331,7 +331,9 @@ class WarmupScheduler {
         const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true`;
         
         await db.addLog('info', `Generating status image via AI (${timePeriod}): "${imagePrompt}"`);
-        const response = await fetch(imageUrl);
+        const response = await fetch(imageUrl, {
+          signal: AbortSignal.timeout(15000) // 15 seconds timeout
+        });
         if (!response.ok) {
           throw new Error(`Failed to generate image from Pollinations: status ${response.status}`);
         }

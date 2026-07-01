@@ -50,7 +50,8 @@ export async function callGemini(systemPrompt, userPrompt, temperature = 0.8) {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000) // 10 seconds timeout
       });
 
       if (!response.ok) {

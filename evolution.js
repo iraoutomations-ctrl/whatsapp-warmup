@@ -22,7 +22,8 @@ async function callEvolutionAPI(endpoint, method, body, throwError = false) {
         'Content-Type': 'application/json',
         'apikey': config.evolutionToken
       },
-      body: body ? JSON.stringify(body) : undefined
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10000) // 10 seconds timeout
     });
 
     if (!response.ok) {
