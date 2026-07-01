@@ -1,5 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
 import db from './database.js';
 import { getConfig, isNightTime, isWeekend, getDailyQuota, getIsraelTime } from './config.js';
 import { generateStarter, generateReply, generateStatusText, generateStatusCaption, generateImagePrompt } from './gemini.js';
@@ -315,14 +316,21 @@ class WarmupScheduler {
       const chooseImage = Math.random() > 0.5; // 50% chance of image status, 50% text status
       
       if (chooseImage) {
-        // 1. Generate a random image prompt using Gemini
-        const imagePrompt = await generateImagePrompt();
-        console.log(`Generated status image prompt: "${imagePrompt}"`);
+        // Calculate the current time period to keep the status topics realistic
+        const { hour } = getIsraelTime();
+        let timePeriod = 'morning';
+        if (hour >= 12 && hour < 17) timePeriod = 'afternoon';
+        else if (hour >= 17 && hour < 21) timePeriod = 'evening';
+        else if (hour >= 21 || hour < 6) timePeriod = 'night';
+
+        // 1. Generate a random image prompt using Gemini with time period context
+        const imagePrompt = await generateImagePrompt(timePeriod);
+        console.log(`Generated status image prompt for ${timePeriod}: "${imagePrompt}"`);
         
         // 2. Fetch the image from Pollinations.ai (free & fast stable diffusion/flux)
         const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true`;
         
-        await db.addLog('info', `Generating status image via AI: "${imagePrompt}"`);
+        await db.addLog('info', `Generating status image via AI (${timePeriod}): "${imagePrompt}"`);
         const response = await fetch(imageUrl);
         if (!response.ok) {
           throw new Error(`Failed to generate image from Pollinations: status ${response.status}`);
@@ -331,6 +339,14 @@ class WarmupScheduler {
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const base64Data = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+
+        // Save the image locally so the dashboard UI can display it
+        const localSavePath = path.join(__dirname, 'public', 'assets', 'status_images', 'last_status.jpg');
+        try {
+          await fs.writeFile(localSavePath, buffer);
+        } catch (saveErr) {
+          console.error('Failed to save last status image locally:', saveErr);
+        }
         
         // 3. Generate caption in Hebrew based on the prompt topic
         const caption = await generateStatusCaption(imagePrompt);
@@ -342,11 +358,11 @@ class WarmupScheduler {
             lastStatusPostDate: today,
             lastStatusPostType: 'image',
             lastStatusPostCaption: caption,
-            lastStatusPostFile: 'ai-generated',
+            lastStatusPostFile: 'last_status.jpg',
             lastStatusPostText: ''
           });
           await db.addLog('success', `WhatsApp AI-generated status image posted: "${caption}"`);
-          return { type: 'image', caption, file: 'ai-generated' };
+          return { type: 'image', caption, file: 'last_status.jpg' };
         }
       } else {
         // Generate text status
