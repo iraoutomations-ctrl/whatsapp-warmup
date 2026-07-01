@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import db from './database.js';
 import { getConfig, isNightTime, isWeekend, getDailyQuota, getIsraelTime } from './config.js';
 import { generateStarter, generateReply, generateStatusText, generateStatusCaption, generateImagePrompt } from './gemini.js';
-import { sendMessage, sendStatusText, sendStatusImage, sendStatus } from './evolution.js';
+import { sendMessage, sendStatusText, sendStatusImage, sendStatus, markRead, sendReaction, sendTypingState } from './evolution.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +22,10 @@ class WarmupScheduler {
     await this.scheduleNextWarmup();
 
     // Start background processing interval for night queue (check every 60 seconds)
-    this.queueIntervalId = setInterval(() => this.processNightQueue(), 60 * 1000);
+    this.queueIntervalId = setInterval(async () => {
+      await this.processNightQueue();
+      await this.processDelayedReplies();
+    }, 60 * 1000);
 
     // Start day progression tracker and daily status poster (check every hour)
     this.dayCheckIntervalId = setInterval(() => {
@@ -215,6 +218,102 @@ class WarmupScheduler {
     } catch (err) {
       console.error('Failed to process night queue item:', err);
       await db.addLog('error', `Failed to reply to overnight queued message for ${item.phone}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Queues a reply to be sent after a certain timestamp.
+   */
+  async queueDelayedReply(phone, remoteJid, messageText, contactName, msgKey, sendAfter) {
+    const settings = db.getSettings();
+    const delayedReplies = settings.delayedReplies || [];
+    
+    delayedReplies.push({
+      phone,
+      remoteJid,
+      messageText,
+      contactName,
+      msgKey,
+      sendAfter
+    });
+    
+    await db.saveSettings({ delayedReplies });
+  }
+
+  /**
+   * Checks the delayed replies queue and processes replies that are due.
+   */
+  async processDelayedReplies() {
+    const config = getConfig();
+    if (config.nightRestEnabled && isNightTime()) return;
+
+    const settings = db.getSettings();
+    const delayedReplies = settings.delayedReplies || [];
+    if (delayedReplies.length === 0) return;
+
+    const now = new Date();
+    const toProcess = [];
+    const remaining = [];
+
+    for (const reply of delayedReplies) {
+      if (now >= new Date(reply.sendAfter)) {
+        toProcess.push(reply);
+      } else {
+        remaining.push(reply);
+      }
+    }
+
+    if (toProcess.length > 0) {
+      await db.saveSettings({ delayedReplies: remaining });
+
+      for (const reply of toProcess) {
+        console.log(`Processing delayed reply for ${reply.contactName || reply.phone}...`);
+        
+        // Execute asynchronously in background
+        setTimeout(async () => {
+          try {
+            await db.addLog('info', `Starting delayed reply sequence for ${reply.phone}`);
+
+            // 1. Go Online (available)
+            await sendTypingState(reply.phone, 'available', 1500);
+
+            // 2. Mark Read (V כחול)
+            await markRead(reply.remoteJid, reply.msgKey);
+
+            // 3. Stagger delay (simulate reading: 1.5 seconds)
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // 4. Generate Reply
+            await db.addLog('info', `Calling Gemini for delayed reply to ${reply.phone}`);
+            const logs = db.getLogs().filter(log => log.phone === reply.phone);
+            const history = logs.slice(0, 10).reverse();
+            const replyText = await generateReply(reply.contactName, reply.messageText, history, config.currentDay);
+            await db.addLog('info', `Gemini response generated for delayed reply to ${reply.phone}: "${replyText}"`);
+
+            // 5. Send reaction or message reply
+            const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
+            if (reactionMatch) {
+              const emoji = reactionMatch[1].trim();
+              if (reply.msgKey?.id) {
+                await db.addLog('info', `Sending emoji reaction "${emoji}" to ${reply.phone}`);
+                const success = await sendReaction(reply.remoteJid, emoji, reply.msgKey);
+                if (!success) {
+                  await sendMessage(reply.phone, emoji, true);
+                }
+              }
+            } else {
+              await db.addLog('info', `Sending text reply to ${reply.phone}`);
+              await sendMessage(reply.phone, replyText, true);
+            }
+
+            // 6. Go Offline (unavailable)
+            await sendTypingState(reply.phone, 'unavailable', 500);
+          } catch (err) {
+            console.error(`Error in delayed reply sequence for ${reply.phone}:`, err);
+            await db.addLog('error', `Delayed reply sequence failed: ${err.message}`);
+          }
+        }, 100);
+      }
     }
   }
 

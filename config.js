@@ -30,7 +30,14 @@ export function getConfig() {
     lastStatusPostType: dbSettings.lastStatusPostType || '',
     lastStatusPostCaption: dbSettings.lastStatusPostCaption || '',
     lastStatusPostText: dbSettings.lastStatusPostText || '',
-    lastStatusPostFile: dbSettings.lastStatusPostFile || ''
+    lastStatusPostFile: dbSettings.lastStatusPostFile || '',
+    
+    // Night rest and busy simulation settings
+    nightRestEnabled: dbSettings.nightRestEnabled !== false,
+    busySimulationEnabled: dbSettings.busySimulationEnabled !== false,
+    busySimulationChance: dbSettings.busySimulationChance !== undefined ? Number(dbSettings.busySimulationChance) : 0.15,
+    minBusyDelayMinutes: dbSettings.minBusyDelayMinutes !== undefined ? Number(dbSettings.minBusyDelayMinutes) : 5,
+    maxBusyDelayMinutes: dbSettings.maxBusyDelayMinutes !== undefined ? Number(dbSettings.maxBusyDelayMinutes) : 30
   };
 }
 

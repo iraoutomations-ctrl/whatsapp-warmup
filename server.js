@@ -143,6 +143,17 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       return res.json({ status: 'success', detail: 'Queued for morning' });
     }
 
+    // Check if we should simulate being "busy" (ghosting) for this reply
+    const shouldDelay = config.busySimulationEnabled && Math.random() < config.busySimulationChance;
+    if (shouldDelay) {
+      const delayMinutes = Math.floor(Math.random() * (config.maxBusyDelayMinutes - config.minBusyDelayMinutes + 1)) + config.minBusyDelayMinutes;
+      const sendAfter = new Date(Date.now() + delayMinutes * 60000).toISOString();
+      
+      await scheduler.queueDelayedReply(phone, remoteJid, messageText, contact.name, data.key, sendAfter);
+      await db.addLog('info', `Simulating busy/away status: Delaying reply to ${contact.name || phone} by ${delayMinutes} minutes (Will reply around ${new Date(sendAfter).toLocaleTimeString('he-IL')}).`, messageText, phone);
+      return res.json({ status: 'success', detail: `Delayed reply by ${delayMinutes} mins` });
+    }
+
     // Process the humanized reply sequence asynchronously in the background
     // to return the HTTP response immediately to the Evolution API webhook dispatcher
     setTimeout(async () => {
