@@ -505,8 +505,10 @@ class WarmupScheduler {
 
     let delayMs;
     if (isFirst) {
-      delayMs = 15 * 1000; // 15 seconds delay for testing
-      console.log(`Scheduling FIRST spontaneous check-in in 15 seconds (Test mode).`);
+      // First check-in after startup: 10 to 30 minutes
+      const delayMinutes = Math.floor(Math.random() * 21) + 10;
+      delayMs = delayMinutes * 60 * 1000;
+      console.log(`Scheduling FIRST spontaneous check-in after startup in ${delayMinutes} minutes.`);
     } else {
       // Schedule next check-in in 20 to 60 minutes
       const delayMinutes = Math.floor(Math.random() * 41) + 20;
