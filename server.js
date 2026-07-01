@@ -144,14 +144,27 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     }
 
     // Check if we should simulate being "busy" (ghosting) for this reply
-    const shouldDelay = config.busySimulationEnabled && Math.random() < config.busySimulationChance;
+    const settings = db.getSettings();
+    const delayedReplies = settings.delayedReplies || [];
+    const existingReplyIdx = delayedReplies.findIndex(r => r.phone === phone);
+    const isAlreadyDelayed = existingReplyIdx !== -1;
+
+    const shouldDelay = isAlreadyDelayed || (config.busySimulationEnabled && Math.random() < config.busySimulationChance);
     if (shouldDelay) {
-      const delayMinutes = Math.floor(Math.random() * (config.maxBusyDelayMinutes - config.minBusyDelayMinutes + 1)) + config.minBusyDelayMinutes;
-      const sendAfter = new Date(Date.now() + delayMinutes * 60000).toISOString();
-      
-      await scheduler.queueDelayedReply(phone, remoteJid, messageText, contact.name, data.key, sendAfter);
-      await db.addLog('info', `Simulating busy/away status: Delaying reply to ${contact.name || phone} by ${delayMinutes} minutes (Will reply around ${new Date(sendAfter).toLocaleTimeString('he-IL')}).`, messageText, phone);
-      return res.json({ status: 'success', detail: `Delayed reply by ${delayMinutes} mins` });
+      if (isAlreadyDelayed) {
+        // Update the queued reply with the latest message text and key
+        delayedReplies[existingReplyIdx].messageText = messageText;
+        delayedReplies[existingReplyIdx].msgKey = data.key;
+        await db.saveSettings({ delayedReplies });
+        await db.addLog('info', `Contact ${contact.name || phone} is already in busy/away delay. Appending new message to queue.`, messageText, phone);
+      } else {
+        const delayMinutes = Math.floor(Math.random() * (config.maxBusyDelayMinutes - config.minBusyDelayMinutes + 1)) + config.minBusyDelayMinutes;
+        const sendAfter = new Date(Date.now() + delayMinutes * 60000).toISOString();
+        
+        await scheduler.queueDelayedReply(phone, remoteJid, messageText, contact.name, data.key, sendAfter);
+        await db.addLog('info', `Simulating busy/away status: Delaying reply to ${contact.name || phone} by ${delayMinutes} minutes (Will reply around ${new Date(sendAfter).toLocaleTimeString('he-IL')}).`, messageText, phone);
+      }
+      return res.json({ status: 'success', detail: `Delayed reply` });
     }
 
     // Process the humanized reply sequence asynchronously in the background
