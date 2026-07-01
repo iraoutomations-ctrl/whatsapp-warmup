@@ -167,12 +167,30 @@ export async function sendMessage(number, text, simulateTyping = true) {
 /**
  * Sends a read receipt for a chat/message.
  */
-export async function markRead(remoteJid) {
+export async function markRead(remoteJid, msgKey = null) {
   console.log(`Sending read receipt for JID: ${remoteJid}`);
   const isGroup = remoteJid.endsWith('@g.us');
   const cleanNumber = isGroup ? remoteJid : remoteJid.split('@')[0];
 
-  // Try calling the Evolution v2 readMessages endpoint first, fallback to v1 markRead
+  // If a specific message key was passed (v2 markMessageAsRead format)
+  if (msgKey && msgKey.id) {
+    try {
+      const result = await callEvolutionAPI('/chat/markMessageAsRead', 'POST', {
+        readMessages: [
+          {
+            remoteJid: remoteJid,
+            fromMe: msgKey.fromMe || false,
+            id: msgKey.id
+          }
+        ]
+      }, true); // throwError = true
+      return result.success || result.mock;
+    } catch (err) {
+      console.log(`v2 markMessageAsRead failed: ${err.message}, trying other fallbacks...`);
+    }
+  }
+
+  // Fallback 1: Try v2 readMessages endpoint (just JID/number)
   try {
     const result = await callEvolutionAPI('/chat/readMessages', 'POST', {
       number: cleanNumber

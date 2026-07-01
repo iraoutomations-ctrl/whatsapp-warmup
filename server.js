@@ -115,7 +115,7 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     }
 
     // Always mark private message as read
-    await markRead(remoteJid);
+    await markRead(remoteJid, data.key);
     await db.incrementStat('incoming');
     await db.addLog('message', `Received: ${messageText}`, messageText, phone, false);
 
