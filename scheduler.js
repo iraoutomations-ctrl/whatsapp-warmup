@@ -38,7 +38,7 @@ class WarmupScheduler {
     setTimeout(() => this.checkAndPostDailyStatus(), 10 * 1000);
 
     // Start random spontaneous check-ins (opening WhatsApp without messaging)
-    this.scheduleNextSpontaneousCheckIn();
+    this.scheduleNextSpontaneousCheckIn(true); // First run is 15 seconds for testing
 
     await db.addLog('info', 'Warmup Scheduler initialized and active loop scheduled.');
   }
@@ -497,17 +497,22 @@ class WarmupScheduler {
   /**
    * Schedules the next spontaneous app check-in.
    */
-  scheduleNextSpontaneousCheckIn() {
+  scheduleNextSpontaneousCheckIn(isFirst = false) {
     if (this.spontaneousCheckInTimeoutId) clearTimeout(this.spontaneousCheckInTimeoutId);
 
     const config = getConfig();
     if (!config.warmupEnabled) return;
 
-    // Schedule next check-in in 20 to 60 minutes
-    const delayMinutes = Math.floor(Math.random() * 41) + 20;
-    const delayMs = delayMinutes * 60 * 1000;
-
-    console.log(`Scheduling next spontaneous check-in in ${delayMinutes} minutes.`);
+    let delayMs;
+    if (isFirst) {
+      delayMs = 15 * 1000; // 15 seconds delay for testing
+      console.log(`Scheduling FIRST spontaneous check-in in 15 seconds (Test mode).`);
+    } else {
+      // Schedule next check-in in 20 to 60 minutes
+      const delayMinutes = Math.floor(Math.random() * 41) + 20;
+      delayMs = delayMinutes * 60 * 1000;
+      console.log(`Scheduling next spontaneous check-in in ${delayMinutes} minutes.`);
+    }
 
     this.spontaneousCheckInTimeoutId = setTimeout(() => {
       this.performSpontaneousCheckIn();
