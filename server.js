@@ -168,7 +168,12 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
         if (reactionMatch) {
           const emoji = reactionMatch[1].trim();
           if (data.key?.id) {
-            await sendReaction(remoteJid, emoji, data.key);
+            const success = await sendReaction(remoteJid, emoji, data.key);
+            if (!success) {
+              // Fallback to normal text message containing the emoji
+              console.log(`sendReaction failed. Falling back to sending emoji "${emoji}" as text.`);
+              await sendMessage(phone, emoji, true);
+            }
           }
         } else {
           // sendMessage will simulate typing based on text length (2s - 6s)

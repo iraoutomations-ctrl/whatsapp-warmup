@@ -267,6 +267,7 @@ export async function sendReaction(number, emoji, msgKeyOrId) {
       }
     } catch (v1Err) {
       console.warn('Failed to send reaction via fallback:', v1Err.message);
+      await db.addLog('warning', `Failed to send reaction ${emoji}: ${v1Err.message}`);
     }
   }
 
