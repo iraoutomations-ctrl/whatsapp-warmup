@@ -214,6 +214,8 @@ export async function generateStatusCaption(imageTopic) {
 
   const userPrompt = `נושא התמונה הוא: "${imageTopic}". נסח כיתוב מתאים וספונטני בעברית. אל תוסיף הסברים או גרשיים.`;
   return await callGemini(systemPrompt, userPrompt, 0.85);
+}
+
 /**
  * Generates a random image prompt in English for AI image generation.
  */
