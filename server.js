@@ -147,9 +147,8 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
     if (reactionMatch) {
       const emoji = reactionMatch[1].trim();
-      const messageId = data.key?.id;
-      if (messageId) {
-        await sendReaction(phone, emoji, messageId);
+      if (data.key?.id) {
+        await sendReaction(remoteJid, emoji, data.key);
         return res.json({ status: 'success', type: 'private_reaction', emoji });
       }
     }

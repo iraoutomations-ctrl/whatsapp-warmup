@@ -215,29 +215,62 @@ export async function markRead(remoteJid, msgKey = null) {
 /**
  * Sends an emoji reaction to a specific message.
  */
-export async function sendReaction(number, emoji, messageId) {
+export async function sendReaction(number, emoji, msgKeyOrId) {
   const isGroup = number.endsWith('@g.us');
   const cleanNumber = isGroup ? number : number.split('@')[0];
+  const targetJid = isGroup ? number : `${cleanNumber}@s.whatsapp.net`;
   
-  console.log(`Reacting with ${emoji} to message ${messageId} on ${cleanNumber}`);
-  
-  const payload = {
-    number: cleanNumber,
-    reaction: emoji,
-    messageId: messageId
-  };
-
-  const result = await callEvolutionAPI('/message/sendReaction', 'POST', payload);
-  
-  if (result.success) {
-    await db.incrementStat('outgoing');
-    await db.addLog('success', `Reacted with ${emoji} to message`, emoji, cleanNumber, true);
-  } else if (result.mock) {
-    await db.incrementStat('outgoing');
-    await db.addLog('success', `[MOCK REACTION] Reacted with ${emoji}`, emoji, cleanNumber, true);
+  let keyPayload;
+  if (msgKeyOrId && typeof msgKeyOrId === 'object' && msgKeyOrId.id) {
+    keyPayload = {
+      remoteJid: msgKeyOrId.remoteJid || targetJid,
+      fromMe: msgKeyOrId.fromMe || false,
+      id: msgKeyOrId.id
+    };
+  } else {
+    keyPayload = {
+      remoteJid: targetJid,
+      fromMe: false,
+      id: msgKeyOrId
+    };
   }
 
-  return result.success || result.mock;
+  console.log(`Reacting with ${emoji} to message ${keyPayload.id} on ${cleanNumber}`);
+
+  // Try calling the Evolution v2 sendReaction format first
+  try {
+    const payload = {
+      key: keyPayload,
+      reaction: {
+        text: emoji
+      }
+    };
+    const result = await callEvolutionAPI('/message/sendReaction', 'POST', payload, true); // throwError = true
+    if (result.success) {
+      await db.incrementStat('outgoing');
+      await db.addLog('success', `Reacted with ${emoji} to message`, emoji, cleanNumber, true);
+      return true;
+    }
+  } catch (err) {
+    console.log(`v2 sendReaction failed: ${err.message}, trying v1 sendReaction...`);
+    try {
+      const payload = {
+        number: cleanNumber,
+        reaction: emoji,
+        messageId: keyPayload.id
+      };
+      const result = await callEvolutionAPI('/message/sendReaction', 'POST', payload, true);
+      if (result.success) {
+        await db.incrementStat('outgoing');
+        await db.addLog('success', `Reacted with ${emoji} to message (v1 fallback)`, emoji, cleanNumber, true);
+        return true;
+      }
+    } catch (v1Err) {
+      console.warn('Failed to send reaction via fallback:', v1Err.message);
+    }
+  }
+
+  return false;
 }
 
 /**
