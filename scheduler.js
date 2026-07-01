@@ -2,8 +2,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import db from './database.js';
 import { getConfig, isNightTime, isWeekend, getDailyQuota, getIsraelTime } from './config.js';
-import { generateStarter, generateReply, generateStatusText, generateStatusCaption } from './gemini.js';
-import { sendMessage, sendStatusText, sendStatusImage } from './evolution.js';
+import { generateStarter, generateReply, generateStatusText, generateStatusCaption, generateImagePrompt } from './gemini.js';
+import { sendMessage, sendStatusText, sendStatusImage, sendStatus } from './evolution.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -312,36 +312,41 @@ class WarmupScheduler {
     await db.addLog('info', 'Initiating WhatsApp Status update post...');
 
     try {
-      const chooseImage = Math.random() > 0.8; // 20% chance of image status, 80% text status
+      const chooseImage = Math.random() > 0.5; // 50% chance of image status, 50% text status
       
       if (chooseImage) {
-        // Pick random image from local folder
-        const images = [
-          { file: 'coffee_morning.png', topic: 'morning coffee cup on a wooden desk' },
-          { file: 'office_cat.png', topic: 'cute office cat sleeping next to a coding laptop' },
-          { file: 'robot_working.png', topic: 'friendly little robot cartoon working at a computer' },
-          { file: 'tel_aviv_sunrise.png', topic: 'tel aviv skyline viewed through an office window at sunrise' },
-          { file: 'shield_success.png', topic: 'laptop screen showing a bright green reputation shield' }
-        ];
+        // 1. Generate a random image prompt using Gemini
+        const imagePrompt = await generateImagePrompt();
+        console.log(`Generated status image prompt: "${imagePrompt}"`);
         
-        const selected = images[Math.floor(Math.random() * images.length)];
-        const imagePath = path.join(__dirname, 'public', 'assets', 'status_images', selected.file);
+        // 2. Fetch the image from Pollinations.ai (free & fast stable diffusion/flux)
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true`;
         
-        // Generate caption
-        const caption = await generateStatusCaption(selected.topic);
+        await db.addLog('info', `Generating status image via AI: "${imagePrompt}"`);
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to generate image from Pollinations: status ${response.status}`);
+        }
         
-        // Send status
-        const success = await sendStatusImage(imagePath, caption);
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const base64Data = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+        
+        // 3. Generate caption in Hebrew based on the prompt topic
+        const caption = await generateStatusCaption(imagePrompt);
+        
+        // 4. Send status
+        const success = await sendStatus('image', base64Data, caption);
         if (success) {
           await db.saveSettings({ 
             lastStatusPostDate: today,
             lastStatusPostType: 'image',
             lastStatusPostCaption: caption,
-            lastStatusPostFile: selected.file,
+            lastStatusPostFile: 'ai-generated',
             lastStatusPostText: ''
           });
-          await db.addLog('success', `WhatsApp status image posted: "${caption}" (Asset: ${selected.file})`);
-          return { type: 'image', caption, file: selected.file };
+          await db.addLog('success', `WhatsApp AI-generated status image posted: "${caption}"`);
+          return { type: 'image', caption, file: 'ai-generated' };
         }
       } else {
         // Generate text status

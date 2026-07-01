@@ -214,6 +214,27 @@ export async function generateStatusCaption(imageTopic) {
 
   const userPrompt = `נושא התמונה הוא: "${imageTopic}". נסח כיתוב מתאים וספונטני בעברית. אל תוסיף הסברים או גרשיים.`;
   return await callGemini(systemPrompt, userPrompt, 0.85);
+/**
+ * Generates a random image prompt in English for AI image generation.
+ */
+export async function generateImagePrompt() {
+  const systemPrompt = `
+You are an expert at writing prompts for text-to-image AI generators.
+Your task is to write a short, photorealistic, smartphone-shot image prompt in English representing a casual daily scene from the perspective of an office worker in Israel.
+
+Guidelines:
+1. Keep it short (5 to 12 words).
+2. Topics: a cup of coffee, office workspace, beautiful view of Tel Aviv beach or skyline, laptop keyboard, cozy office lounge, afternoon snack, or Israeli street view.
+3. Styles: Photorealistic, warm lighting, cozy atmosphere, shot on smartphone.
+
+Strict Rule: Output ONLY the prompt itself in English, nothing else! No explanations, no quotes.
+`;
+  const userPrompt = `Generate a random photo prompt.`;
+  try {
+    return await callGemini(systemPrompt, userPrompt, 0.9);
+  } catch (e) {
+    return 'cup of coffee on a wooden office desk, warm lighting, photorealistic';
+  }
 }
 
 /**
