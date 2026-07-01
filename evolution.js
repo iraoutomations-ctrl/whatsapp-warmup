@@ -319,12 +319,23 @@ export async function sendStatus(type, content, caption = '') {
       }
     };
     
+    // Text status requires background color and font style
+    if (type === 'text') {
+      payload.statusMessage.backgroundColor = '#128C7E'; // WhatsApp Teal Green
+      payload.statusMessage.font = 1;
+    }
+    
     const flatPayload = {
       type: type,
       content: content,
       caption: caption,
       allContacts: true
     };
+    
+    if (type === 'text') {
+      flatPayload.backgroundColor = '#128C7E';
+      flatPayload.font = 1;
+    }
     
     try {
       const result = await callEvolutionAPI('/message/sendStatus', 'POST', payload, true);
