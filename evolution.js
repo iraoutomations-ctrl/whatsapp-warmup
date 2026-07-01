@@ -284,7 +284,8 @@ export async function sendMedia(number, base64Data, mediaType = 'image', fileNam
   const payload = {
     number: cleanNumber,
     media: base64Data,
-    mediaType: mediaType,
+    mediaType: mediaType, // v1 fallback
+    mediatype: mediaType, // v2 required (lowercase)
     fileName: fileName,
     caption: caption
   };
