@@ -114,8 +114,7 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       return res.json({ status: 'ignored', reason: 'Not an active guided contact' });
     }
 
-    // Always mark private message as read
-    await markRead(remoteJid, data.key);
+    // Log the incoming message and update statistics immediately
     await db.incrementStat('incoming');
     await db.addLog('message', `Received: ${messageText}`, messageText, phone, false);
 
@@ -127,7 +126,14 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
 
     const config = getConfig();
     if (!config.warmupEnabled) {
-      console.log(`Warmup is disabled. Read receipt sent to ${phone}, but reply skipped.`);
+      console.log(`Warmup is disabled. Read receipt will be sent to ${phone} after delay, but reply skipped.`);
+      setTimeout(async () => {
+        try {
+          await markRead(remoteJid, data.key);
+        } catch (e) {
+          console.error('Failed to mark read in disabled mode:', e);
+        }
+      }, 3000);
       return res.json({ status: 'success', detail: 'Read only, warmup disabled' });
     }
 
@@ -140,23 +146,40 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     // Generate natural response
     const logs = db.getLogs().filter(log => log.phone === phone);
     const history = logs.slice(0, 10).reverse();
-
     const replyText = await generateReply(contact.name, messageText, history, config.currentDay);
-    
-    // Check if Gemini suggested an emoji reaction
-    const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
-    if (reactionMatch) {
-      const emoji = reactionMatch[1].trim();
-      if (data.key?.id) {
-        await sendReaction(remoteJid, emoji, data.key);
-        return res.json({ status: 'success', type: 'private_reaction', emoji });
+
+    // Process the humanized reply sequence asynchronously in the background
+    // to return the HTTP response immediately to the Evolution API webhook dispatcher
+    setTimeout(async () => {
+      try {
+        // 1. Wait a random human delay (3 to 7 seconds) before opening the message (blue checks appear)
+        const readDelay = Math.floor(Math.random() * 4000) + 3000;
+        console.log(`Delaying read receipt for ${phone} by ${readDelay}ms`);
+        await new Promise(resolve => setTimeout(resolve, readDelay));
+
+        // 2. Mark message as read (V כחול)
+        await markRead(remoteJid, data.key);
+
+        // 3. Wait a short delay before starting to type (simulate reading comprehension delay: 1 to 2 seconds)
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // 4. Send reaction or message reply
+        const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
+        if (reactionMatch) {
+          const emoji = reactionMatch[1].trim();
+          if (data.key?.id) {
+            await sendReaction(remoteJid, emoji, data.key);
+          }
+        } else {
+          // sendMessage will simulate typing based on text length (2s - 6s)
+          await sendMessage(phone, replyText, true);
+        }
+      } catch (err) {
+        console.error('Error in asynchronous reply pipeline:', err);
       }
-    }
+    }, 100);
 
-    // Send reply (typing state simulated in sendMessage)
-    await sendMessage(phone, replyText, true);
-
-    return res.json({ status: 'success', type: 'private_reply' });
+    return res.json({ status: 'success', type: 'queued_reply' });
   } catch (error) {
     console.error('Error handling webhook message:', error);
     await db.addLog('error', `Webhook handler failed: ${error.message}`);
