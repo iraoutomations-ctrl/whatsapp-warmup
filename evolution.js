@@ -55,27 +55,32 @@ export async function sendTypingState(number, presence = 'composing', delayMs = 
   
   await db.addLog('info', `Simulating typing state '${presence}' to ${cleanNumber} for ${delayMs / 1000}s`);
 
-  // Try calling the Evolution v2 updatePresence endpoint, fallback to v1 retrievingPresence
+  // Try calling the Evolution v2 sendPresence endpoint, fallback to older updatePresence, fallback to v1 retrievingPresence
   try {
-    await callEvolutionAPI('/chat/updatePresence', 'POST', {
+    await callEvolutionAPI('/chat/sendPresence', 'POST', {
       number: cleanNumber,
       presence: presence,
       delay: delayMs
-    });
+    }, true); // throwError = true
   } catch (err) {
-    if (err.message.includes('404')) {
-      console.log('v2 updatePresence returned 404, trying v1 retrievingPresence...');
+    console.log(`v2 sendPresence failed: ${err.message}, trying updatePresence...`);
+    try {
+      await callEvolutionAPI('/chat/updatePresence', 'POST', {
+        number: cleanNumber,
+        presence: presence,
+        delay: delayMs
+      }, true); // throwError = true
+    } catch (updateErr) {
+      console.log(`updatePresence failed: ${updateErr.message}, trying v1 retrievingPresence...`);
       try {
         await callEvolutionAPI('/chat/retrievingPresence', 'POST', {
           number: cleanNumber,
           delay: delayMs,
           presence: presence
-        });
+        }, true); // throwError = true
       } catch (v1Err) {
-        console.warn('Failed to set typing presence via v1 fallback:', v1Err.message);
+        console.warn('Failed to set typing presence via all fallbacks:', v1Err.message);
       }
-    } else {
-      console.warn('Failed to set typing presence:', err.message);
     }
   }
 
@@ -164,14 +169,29 @@ export async function sendMessage(number, text, simulateTyping = true) {
  */
 export async function markRead(remoteJid) {
   console.log(`Sending read receipt for JID: ${remoteJid}`);
-  
-  const payload = {
-    read: true,
-    wids: [remoteJid]
-  };
+  const isGroup = remoteJid.endsWith('@g.us');
+  const cleanNumber = isGroup ? remoteJid : remoteJid.split('@')[0];
 
-  const result = await callEvolutionAPI('/chat/markRead', 'POST', payload);
-  return result.success || result.mock;
+  // Try calling the Evolution v2 readMessages endpoint first, fallback to v1 markRead
+  try {
+    const result = await callEvolutionAPI('/chat/readMessages', 'POST', {
+      number: cleanNumber
+    }, true); // throwError = true
+    return result.success || result.mock;
+  } catch (err) {
+    console.log(`v2 readMessages failed: ${err.message}, trying v1 markRead...`);
+    try {
+      const payload = {
+        read: true,
+        wids: [remoteJid]
+      };
+      const result = await callEvolutionAPI('/chat/markRead', 'POST', payload, true);
+      return result.success || result.mock;
+    } catch (v1Err) {
+      console.warn('Failed to send read receipt via fallback:', v1Err.message);
+    }
+  }
+  return false;
 }
 
 /**
