@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import db from './database.js';
 import scheduler from './scheduler.js';
 import { getConfig, isNightTime, getDailyQuota } from './config.js';
-import { sendMessage, markRead, sendReaction } from './evolution.js';
+import { sendMessage, markRead, sendReaction, sendTypingState } from './evolution.js';
 import { generateReply, generateGroupReply } from './gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
