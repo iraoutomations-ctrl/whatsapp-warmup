@@ -181,7 +181,7 @@ export async function generateGroupReply(senderName, messageText) {
 /**
  * Generates a short, casual Hebrew text to post as a WhatsApp status update.
  */
-export async function generateStatusText() {
+export async function generateStatusText(timePeriod = 'morning') {
   const systemPrompt = `
 אתה כותב סטטוס וואטסאפ (Story) קצר, חיובי וספונטני בעברית עבור עובד במשרד יוזמה.
 מטרת הסטטוס היא לדמות פעילות אנושית טבעית בוואטסאפ.
@@ -189,12 +189,20 @@ export async function generateStatusText() {
 חוקים נוקשים:
 1. קצר מאוד (משפט אחד, 2 עד 6 מילים).
 2. שפה טבעית, יומיומית, ספונטנית.
-3. נושאים מגוונים: קפה של בוקר, פקקים בדרך למשרד, מוטיבציה לעבודה, מזג האוויר, תוכניות לסופ"ש, שיר טוב ששמעת עכשיו, מחשבות קצרות על יום העבודה, עייפות של אחרי צהריים, שמחה של אמצע/סוף שבוע.
+3. הסטטוס חייב להתאים לתקופת הזמן הנוכחית ביום: "${timePeriod}".
+   - עבור "morning": קפה של בוקר, נסיעה למשרד, מוטיבציה לעבודה, בוקר טוב.
+   - עבור "afternoon": עומס עבודה, עייפות של אחרי צהריים, ארוחת צהריים, הפסקת קפה קצרה.
+   - עבור "evening": תוכניות לערב, לצאת מהמשרד לבית, שקיעה יפה, סיכום יום מוצלח.
+   - עבור "night": מנוחה בבית, לילה טוב, עייפות של סוף יום, שקט של לילה.
 4. ללא סימני קריאה מוגזמים, ללא פניות רשמיות. מותר לשלב אימוג'י בודד בסוף.
 `;
 
-  const userPrompt = `נסח סטטוס וואטסאפ ספונטני אחד בעברית. אל תוסיף שום הסבר, אלא רק את המשפט עצמו.`;
-  return await callGemini(systemPrompt, userPrompt, 0.85);
+  const userPrompt = `נסח סטטוס וואטסאפ טקסטואלי ספונטני אחד בעברית שמתאים לתקופת זמן: ${timePeriod}. אל תוסיף שום הסבר, אלא רק את המשפט עצמו.`;
+  try {
+    return await callGemini(systemPrompt, userPrompt, 0.85);
+  } catch (e) {
+    return timePeriod === 'morning' ? 'קפה של בוקר להתחיל את היום ☕' : 'עוד יום מוצלח הגיע לסיומו 🙏';
+  }
 }
 
 /**

@@ -313,16 +313,16 @@ class WarmupScheduler {
     await db.addLog('info', 'Initiating WhatsApp Status update post...');
 
     try {
+      // Calculate the current time period to keep the status topics realistic
+      const { hour } = getIsraelTime();
+      let timePeriod = 'morning';
+      if (hour >= 12 && hour < 17) timePeriod = 'afternoon';
+      else if (hour >= 17 && hour < 21) timePeriod = 'evening';
+      else if (hour >= 21 || hour < 6) timePeriod = 'night';
+
       const chooseImage = Math.random() > 0.5; // 50% chance of image status, 50% text status
       
       if (chooseImage) {
-        // Calculate the current time period to keep the status topics realistic
-        const { hour } = getIsraelTime();
-        let timePeriod = 'morning';
-        if (hour >= 12 && hour < 17) timePeriod = 'afternoon';
-        else if (hour >= 17 && hour < 21) timePeriod = 'evening';
-        else if (hour >= 21 || hour < 6) timePeriod = 'night';
-
         // 1. Generate a random image prompt using Gemini with time period context
         const imagePrompt = await generateImagePrompt(timePeriod);
         console.log(`Generated status image prompt for ${timePeriod}: "${imagePrompt}"`);
@@ -365,8 +365,8 @@ class WarmupScheduler {
           return { type: 'image', caption, file: 'last_status.jpg' };
         }
       } else {
-        // Generate text status
-        const text = await generateStatusText();
+        // Generate text status with time period context
+        const text = await generateStatusText(timePeriod);
         
         // Send status
         const success = await sendStatusText(text);
