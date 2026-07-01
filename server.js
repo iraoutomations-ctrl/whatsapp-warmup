@@ -143,34 +143,41 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       return res.json({ status: 'success', detail: 'Queued for morning' });
     }
 
-    // Generate natural response
-    const logs = db.getLogs().filter(log => log.phone === phone);
-    const history = logs.slice(0, 10).reverse();
-    const replyText = await generateReply(contact.name, messageText, history, config.currentDay);
-
     // Process the humanized reply sequence asynchronously in the background
     // to return the HTTP response immediately to the Evolution API webhook dispatcher
     setTimeout(async () => {
       try {
+        await db.addLog('info', `Starting humanized reply sequence for ${phone}`);
+
         // 1. Wait a random human delay (3 to 7 seconds) before opening the app
         const readDelay = Math.floor(Math.random() * 4000) + 3000;
         console.log(`Delaying app open simulation for ${phone} by ${readDelay}ms`);
         await new Promise(resolve => setTimeout(resolve, readDelay));
 
         // 2. Go "Online" (available) to simulate opening the app
+        await db.addLog('info', `Simulating user online (available) for ${phone}`);
         await sendTypingState(phone, 'available', 1500);
 
         // 3. Mark message as read (V כחול)
+        await db.addLog('info', `Marking message as read (blue checks) for ${phone}`);
         await markRead(remoteJid, data.key);
 
         // 4. Wait a short delay before starting to type (simulate reading: 1.5 seconds)
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // 5. Send reaction or message reply
+        // 5. Generate natural response using Gemini
+        await db.addLog('info', `Calling Gemini to generate reply for ${phone}`);
+        const logs = db.getLogs().filter(log => log.phone === phone);
+        const history = logs.slice(0, 10).reverse();
+        const replyText = await generateReply(contact.name, messageText, history, config.currentDay);
+        await db.addLog('info', `Gemini response generated for ${phone}: "${replyText}"`);
+
+        // 6. Send reaction or message reply
         const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
         if (reactionMatch) {
           const emoji = reactionMatch[1].trim();
           if (data.key?.id) {
+            await db.addLog('info', `Sending emoji reaction "${emoji}" to ${phone}`);
             const success = await sendReaction(remoteJid, emoji, data.key);
             if (!success) {
               // Fallback to normal text message containing the emoji
@@ -180,13 +187,16 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
           }
         } else {
           // sendMessage will simulate typing based on text length (2s - 6s)
+          await db.addLog('info', `Sending text reply to ${phone}`);
           await sendMessage(phone, replyText, true);
         }
 
-        // 6. Go "Offline" (unavailable) to simulate closing the app
+        // 7. Go "Offline" (unavailable) to simulate closing the app
+        await db.addLog('info', `Simulating user offline (unavailable) for ${phone}`);
         await sendTypingState(phone, 'unavailable', 500);
       } catch (err) {
         console.error('Error in asynchronous reply pipeline:', err);
+        await db.addLog('error', `Async reply pipeline failed: ${err.message}`);
       }
     }, 100);
 
