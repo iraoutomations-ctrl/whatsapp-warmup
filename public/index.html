@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>יוזמה - שריון אמינות וואטסאפ (Trust Shield)</title>
+  <!-- Google Fonts: Rubik for clean Hebrew typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Rubik:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="glass-bg"></div>
+  
+  <div class="app-container">
+    <!-- Header -->
+    <header class="main-header">
+      <div class="logo-area">
+        <span class="shield-icon">🛡️</span>
+        <div class="logo-text">
+          <h1>שריון אמינות</h1>
+          <p>יוזמה אוטומציות - WhatsApp Warmup</p>
+        </div>
+      </div>
+      
+      <div class="status-pills">
+        <div class="status-pill" id="system-status-pill">
+          <span class="dot pulse gray"></span>
+          <span class="label">טוען...</span>
+        </div>
+        <div class="status-pill" id="night-status-pill">
+          <span class="icon">🌙</span>
+          <span class="label">מצב לילה: כבוי</span>
+        </div>
+        <div class="status-pill" id="weekend-status-pill">
+          <span class="icon">🌴</span>
+          <span class="label">סופ"ש: כבוי</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Metrics Grid -->
+    <section class="metrics-grid">
+      <!-- Warmup Progress -->
+      <div class="metric-card progress-card">
+        <h3>התקדמות החימום</h3>
+        <div class="progress-details">
+          <span class="progress-val">יום <span id="warmup-day-val" class="ltr-text">0 / 14</span></span>
+          <span class="progress-percent" id="warmup-phase-val">שלב 1 (בניית בסיס)</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="warmup-progress-bar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Daily Quota -->
+      <div class="metric-card quota-card">
+        <h3>הודעות יוצאות היום</h3>
+        <div class="progress-details">
+          <span class="progress-val ltr-text" id="quota-val">0 / 0</span>
+          <span class="progress-percent" id="quota-percent">0%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill orange" id="quota-progress-bar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="metric-card stats-card">
+        <h3>סטטיסטיקת הודעות (היום)</h3>
+        <div class="stats-mini-grid">
+          <div class="mini-stat">
+            <span class="num" id="stat-incoming">0</span>
+            <span class="lbl">נכנסו</span>
+          </div>
+          <div class="mini-stat">
+            <span class="num" id="stat-outgoing">0</span>
+            <span class="lbl">נשלחו</span>
+          </div>
+          <div class="mini-stat">
+            <span class="num" id="stat-group">0</span>
+            <span class="lbl">קבוצות</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- WhatsApp Status Story Card -->
+      <div class="metric-card status-story-card">
+        <h3>סטטוס יומי (WhatsApp Status)</h3>
+        <div class="status-story-content">
+          <span class="status-posted-lbl">סטטוס היום: <strong id="status-today-val">לא פורסם ❌</strong></span>
+          <div id="status-preview-container" style="display: none; font-size: 0.85rem; color: var(--text-secondary); margin-top: 5px; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; line-height: 1.4; text-align: right; width: 100%;">
+            תוכן הסטטוס: <strong id="status-preview-val" style="font-weight: normal; color: var(--text-primary);"></strong>
+            <div id="status-image-preview-box" style="margin-top: 8px; display: none; text-align: center; width: 100%;">
+              <img id="status-preview-img" src="" style="max-width: 100%; max-height: 140px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); margin-top: 5px; object-fit: contain;">
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline status-btn" id="btn-post-status">פרסם סטטוס עכשיו 📢</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="overview">📊 סקירה כללית</button>
+      <button class="tab-btn" data-tab="contacts">👥 אנשי קשר מודרכים</button>
+      <button class="tab-btn" data-tab="simulator">🤖 סימולטור שיחות</button>
+      <button class="tab-btn" data-tab="settings">⚙️ הגדרות מערכת</button>
+    </nav>
+
+    <!-- Main Content Panels -->
+    <main class="content-panel">
+      
+      <!-- Panel: Overview -->
+      <div class="tab-content active" id="tab-overview">
+        <div class="overview-layout">
+          <!-- Live Event Logs -->
+          <div class="logs-section">
+            <div class="section-header">
+              <h2>📋 לוגים ופעילות מערכת בזמן אמת</h2>
+              <button class="btn btn-sm btn-outline" id="btn-clear-logs-ui">נקה תצוגה</button>
+            </div>
+            <div class="logs-container" id="logs-list">
+              <div class="empty-state">אין לוגים להצגה כרגע.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Contacts -->
+      <div class="tab-content" id="tab-contacts">
+        <div class="section-header">
+          <h2>👥 ניהול אנשי קשר מודרכים</h2>
+          <button class="btn btn-primary" id="btn-open-add-contact-modal">+ הוסף איש קשר</button>
+        </div>
+        <p class="section-desc">
+          אלו הם מספרי הטלפון שיקחו חלק פעיל בחימום המספר. הבוט יפנה אליהם בשיחות יזומות (אקטיבי) ויענה להודעות נכנסות מהם (פסיבי). הודעות ממספרים אחרים יסוננו.
+        </p>
+
+        <div class="table-container">
+          <table class="contacts-table">
+            <thead>
+              <tr>
+                <th>שם</th>
+                <th>מספר טלפון</th>
+                <th>הערות</th>
+                <th>הודעות שהוחלפו</th>
+                <th>פעילות אחרונה</th>
+                <th>סטטוס</th>
+                <th>פעולות</th>
+              </tr>
+            </thead>
+            <tbody id="contacts-table-body">
+              <tr>
+                <td colspan="7" class="text-center">טוען אנשי קשר...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel: Simulator -->
+      <div class="tab-content" id="tab-simulator">
+        <div class="simulator-layout">
+          <div class="simulator-controls">
+            <h2>🤖 סימולטור פניות וואטסאפ (Offline Testing)</h2>
+            <p class="section-desc">
+              השתמש בסימולטור זה כדי לבדוק את התגובות של ג'מיני ואת חוקי המערכת (למשל מניעת מענה בלילה) מבלי לחבר חשבון וואטסאפ אמיתי.
+            </p>
+            
+            <form id="simulator-form" class="sim-form">
+              <div class="form-group">
+                <label for="sim-contact-select">שלח הודעה בשם איש קשר מודרך:</label>
+                <select id="sim-contact-select" required>
+                  <option value="">-- בחר איש קשר --</option>
+                </select>
+              </div>
+
+              <div class="form-group-row">
+                <div class="form-group">
+                  <label for="sim-sender-name">או בשם שולח חיצוני (קבוצה/מספר אחר):</label>
+                  <input type="text" id="sim-sender-name" placeholder="למשל: דניאל">
+                </div>
+                <div class="form-group">
+                  <label for="sim-phone">מספר טלפון לדימוי:</label>
+                  <input type="text" id="sim-phone" placeholder="למשל: 972501234567">
+                </div>
+              </div>
+
+              <div class="form-group-checkbox">
+                <input type="checkbox" id="sim-is-group">
+                <label for="sim-is-group">דימוי הודעה שנשלחה בתוך קבוצה (Group Chat)</label>
+              </div>
+
+              <div class="form-group">
+                <label for="sim-message">תוכן ההודעה הנכנסת:</label>
+                <textarea id="sim-message" placeholder="הקלד כאן את ההודעה שהבוט יקבל בוואטסאפ..." required></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-block">שגר הודעה לבוט 💬</button>
+            </form>
+          </div>
+
+          <!-- Mock Phone Screen -->
+          <div class="mock-phone-wrapper">
+            <div class="phone-screen">
+              <div class="phone-header">
+                <div class="phone-back">💬</div>
+                <div class="phone-info">
+                  <div class="phone-name" id="phone-chat-name">סימולטור וואטסאפ</div>
+                  <div class="phone-status" id="phone-chat-status">מחובר</div>
+                </div>
+              </div>
+              <div class="phone-chat-body" id="phone-chat-history">
+                <div class="system-bubble">כאן יוצגו ההודעות הסימולטיביות שנשלחו לבוט והתגובות שלו.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Settings -->
+      <div class="tab-content" id="tab-settings">
+        <h2>⚙️ הגדרות המערכת ושריון האמינות</h2>
+        <p class="section-desc">ניהול הגדרות ה-Evolution API, מפתח Gemini וחוקי זמני המנוחה של המערכת.</p>
+
+        <form id="settings-form" class="settings-grid-form">
+          <!-- Col 1: API Configs -->
+          <div class="settings-box">
+            <h3>🔑 מפתחות וחיבורי API</h3>
+            
+            <div class="form-group">
+              <label for="setting-gemini-key">מפתח Gemini API (מ-Google AI Studio):</label>
+              <input type="password" id="setting-gemini-key" placeholder="AIzaSy...">
+            </div>
+
+            <div class="form-group">
+              <label for="setting-evo-url">Evolution API URL:</label>
+              <input type="url" id="setting-evo-url" placeholder="https://api.yourdomain.com">
+            </div>
+
+            <div class="form-group">
+              <label for="setting-evo-token">Evolution API Apikey (Token):</label>
+              <input type="password" id="setting-evo-token" placeholder="your-global-token">
+            </div>
+
+            <div class="form-group">
+              <label for="setting-evo-instance">Evolution Instance Name:</label>
+              <input type="text" id="setting-evo-instance" placeholder="yozma-whatsapp">
+            </div>
+
+            <button class="btn btn-outline" id="btn-test-connection" type="button" style="margin-top: 15px; width: 100%;">🔍 בדיקת התממשקות וחיבור API</button>
+            <div id="connection-test-results" style="display: none; margin-top: 10px; padding: 12px; border-radius: 10px; background: rgba(0,0,0,0.3); font-size: 0.9rem; line-height: 1.4; direction: rtl; text-align: right;"></div>
+          </div>
+
+          <!-- Col 2: Warmup & Rest Rules -->
+          <div class="settings-box">
+            <h3>⏱️ חוקי מנוחה וקצב חימום</h3>
+
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="setting-current-day">יום חימום נוכחי (1-14):</label>
+                <input type="number" id="setting-current-day" min="1" max="14" required>
+              </div>
+              <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-warmup-enabled">
+                  <span class="slider"></span>
+                  <span class="toggle-label">מערכת חימום פעילה</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="setting-rest-start">שעת תחילת מנוחה (לילה):</label>
+                <input type="time" id="setting-rest-start" required>
+              </div>
+              <div class="form-group">
+                <label for="setting-rest-end">שעת סיום מנוחה (בוקר):</label>
+                <input type="time" id="setting-rest-end" required>
+              </div>
+            </div>
+
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="setting-interval-min">זמן מינימום בין פניות (דקות):</label>
+                <input type="number" id="setting-interval-min" min="5" required>
+              </div>
+              <div class="form-group">
+                <label for="setting-interval-max">זמן מקסימום בין פניות (דקות):</label>
+                <input type="number" id="setting-interval-max" min="5" required>
+              </div>
+            </div>
+
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="setting-limit-w1">מגבלת שבוע 1 (הודעות/יום):</label>
+                <input type="number" id="setting-limit-w1" min="1" required>
+              </div>
+              <div class="form-group">
+                <label for="setting-limit-w2">מגבלת שבוע 2 (הודעות/יום):</label>
+                <input type="number" id="setting-limit-w2" min="1" required>
+              </div>
+            </div>
+
+            <div class="form-group-checkbox">
+              <input type="checkbox" id="setting-groups-enabled">
+              <label for="setting-groups-enabled">הפעל תגובות בקבוצות (שבוע 2)</label>
+            </div>
+            
+            <div class="form-group">
+              <label for="setting-group-limit">מגבלת תגובות בקבוצות ליום:</label>
+              <input type="number" id="setting-group-limit" min="0" required>
+            </div>
+          </div>
+
+          <div class="settings-footer">
+            <button type="submit" class="btn btn-primary" id="btn-save-settings">שמור הגדרות מוגנות 🔒</button>
+          </div>
+        </form>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Modal: Add Contact -->
+  <div class="modal" id="add-contact-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>👥 הוספת איש קשר מודרך חדש</h3>
+        <span class="modal-close" id="btn-close-contact-modal">&times;</span>
+      </div>
+      <form id="add-contact-form">
+        <div class="form-group">
+          <label for="contact-name">שם מלא / כינוי:</label>
+          <input type="text" id="contact-name" placeholder="למשל: יוסי מנהל פרויקטים" required>
+        </div>
+        <div class="form-group">
+          <label for="contact-phone">מספר טלפון (קוד מדינה ללא + או רווחים):</label>
+          <input type="text" id="contact-phone" placeholder="למשל: 972522222222" required>
+          <small class="form-help">הקפד להכניס מספר תקין עם קידומת (ישראל מתחילה ב-972).</small>
+        </div>
+        <div class="form-group">
+          <label for="contact-notes">הערות / הקשר שיחה:</label>
+          <input type="text" id="contact-notes" placeholder="למשל: יזרום איתי על נושא העבודה ומיילים">
+        </div>
+        <div class="form-group-checkbox">
+          <input type="checkbox" id="contact-enabled" checked>
+          <label for="contact-enabled">איש קשר פעיל לחימום</label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-cancel-contact-modal">ביטול</button>
+          <button type="submit" class="btn btn-primary">שמור איש קשר</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

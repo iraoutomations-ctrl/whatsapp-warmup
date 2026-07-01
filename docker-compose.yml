@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  whatsapp-warmup:
+    build: .
+    container_name: whatsapp-warmup
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    restart: always
