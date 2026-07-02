@@ -244,6 +244,7 @@ app.get('/api/status', (req, res) => {
   const today = db.getTodayDateString();
   const stats = db.getStatsForDate(today);
   const dailyQuota = getDailyQuota();
+  const settings = db.getSettings();
   
   res.json({
     config,
@@ -255,7 +256,9 @@ app.get('/api/status', (req, res) => {
       total: stats.total,
       quota: dailyQuota
     },
-    nightQueueLength: (config.nightQueue || []).length,
+    nightQueueLength: (settings.nightQueue || []).length,
+    delayedReplies: settings.delayedReplies || [],
+    nightQueue: settings.nightQueue || [],
     isNight: isNightTime()
   });
 });
@@ -321,6 +324,68 @@ app.post('/api/reset', async (req, res) => {
 
     res.json({ success: true, message: 'All data successfully reset' });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Send a manual WhatsApp message to a guided contact and override any queued bot replies
+ */
+app.post('/api/chat/send', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    if (!phone || !message) {
+      return res.status(400).json({ error: 'Phone and message are required' });
+    }
+
+    const contact = db.getContacts().find(c => c.phone === phone);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found in guided contacts' });
+    }
+
+    // 1. Send the actual message via Evolution API
+    await sendMessage(phone, message, true);
+
+    // 2. Add to logs as an outgoing message
+    await db.addLog('message', `Sent manual [MESSAGE]: ${message}`, message, phone, true);
+
+    // 3. Increment stats
+    await db.incrementStat('outgoing');
+
+    // 4. Update contact last interaction
+    await db.updateContact(phone, {
+      lastInteractionAt: new Date().toISOString(),
+      messageCount: contact.messageCount + 1
+    });
+
+    // 5. Override/Clear any queued replies for this contact
+    const settings = db.getSettings();
+    let queueChanged = false;
+
+    // Clear delayedReplies
+    let delayedReplies = settings.delayedReplies || [];
+    const delayedIdx = delayedReplies.findIndex(r => r.phone === phone);
+    if (delayedIdx !== -1) {
+      delayedReplies.splice(delayedIdx, 1);
+      queueChanged = true;
+    }
+
+    // Clear nightQueue
+    let nightQueue = settings.nightQueue || [];
+    const nightIdx = nightQueue.findIndex(q => q.phone === phone);
+    if (nightIdx !== -1) {
+      nightQueue.splice(nightIdx, 1);
+      queueChanged = true;
+    }
+
+    if (queueChanged) {
+      await db.saveSettings({ delayedReplies, nightQueue });
+      await db.addLog('info', `Human override: Cleared queued automated replies for ${contact.name || phone} due to manual message.`, '', phone);
+    }
+
+    res.json({ success: true, message: 'Message sent and queues cleared' });
+  } catch (err) {
+    console.error('Failed to send manual message:', err);
     res.status(500).json({ error: err.message });
   }
 });

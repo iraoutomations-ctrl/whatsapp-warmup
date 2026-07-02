@@ -27,6 +27,7 @@ let contactsList = [];
 let logsList = [];
 let systemStatus = {};
 let simulatorHistory = [];
+let activeChatPhone = null;
 
 // DOM Elements
 const systemStatusPill = document.getElementById('system-status-pill');
@@ -92,6 +93,11 @@ document.addEventListener('DOMContentLoaded', () => {
     btnResetData.addEventListener('click', handleResetData);
   }
   
+  const liveChatForm = document.getElementById('livechat-send-form');
+  if (liveChatForm) {
+    liveChatForm.addEventListener('submit', handleLiveChatSend);
+  }
+  
   document.getElementById('btn-clear-logs-ui').addEventListener('click', () => {
     logsListContainer.innerHTML = '<div class="empty-state">תצוגה נוקתה. לוגים חדשים יופיעו בהמשך.</div>';
   });
@@ -135,6 +141,7 @@ async function loadData() {
     fetchContacts(),
     fetchLogs()
   ]);
+  updateLiveChatUI();
 }
 
 // Staggered Polling
@@ -142,6 +149,7 @@ async function pollRealtimeData() {
   try {
     await fetchStatus();
     await fetchLogs();
+    updateLiveChatUI();
   } catch (err) {
     console.error('Polling failed:', err);
   }
@@ -733,5 +741,247 @@ async function handleResetData() {
       btnResetData.disabled = false;
       btnResetData.textContent = 'אפס נתוני מערכת 🧹';
     }
+  }
+}
+
+// Update the split-pane Live Chat UI
+function updateLiveChatUI() {
+  const sidebarContainer = document.getElementById('livechat-list');
+  if (!sidebarContainer) return;
+
+  const delayedReplies = systemStatus.delayedReplies || [];
+  const nightQueue = systemStatus.nightQueue || [];
+
+  // Sort contacts by name
+  const contacts = [...contactsList];
+
+  if (contacts.length === 0) {
+    sidebarContainer.innerHTML = '<div class="empty-state">אין אנשי קשר מוגדרים.</div>';
+    return;
+  }
+
+  let html = '';
+  contacts.forEach(contact => {
+    // 1. Determine status badge
+    let statusBadge = '<span class="badge badge-green">חופשי 🟢</span>';
+    const isDelayed = delayedReplies.find(r => r.phone === contact.phone);
+    const isNightQueued = nightQueue.find(q => q.phone === contact.phone);
+
+    if (isDelayed) {
+      statusBadge = '<span class="badge badge-violet">עסוק ⏳</span>';
+    } else if (isNightQueued) {
+      statusBadge = '<span class="badge badge-gray">במנוחה 🌙</span>';
+    } else if (!contact.enabled) {
+      statusBadge = '<span class="badge badge-gray">כבוי ❌</span>';
+    }
+
+    // 2. Find last message preview
+    const contactLogs = logsList.filter(log => log.phone === contact.phone && log.type === 'message');
+    let lastMsgPreview = contact.notes || 'אין הערות שיחה';
+    let lastMsgTime = '';
+    
+    if (contactLogs.length > 0) {
+      const lastLog = contactLogs[0]; // logsList is reverse-sorted, so index 0 is the latest!
+      lastMsgPreview = lastLog.message || '';
+      if (lastLog.timestamp) {
+        lastMsgTime = new Date(lastLog.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+
+    const isActive = activeChatPhone === contact.phone ? 'active' : '';
+    const initials = contact.name ? contact.name.trim().substring(0, 2) : 'U';
+
+    html += `
+      <div class="chat-item ${isActive}" data-phone="${contact.phone}">
+        <div class="chat-item-avatar">${initials}</div>
+        <div class="chat-item-info">
+          <div class="chat-item-name-row">
+            <span class="chat-item-name">${contact.name}</span>
+            <span class="chat-item-time">${lastMsgTime}</span>
+          </div>
+          <span class="chat-item-preview">${lastMsgPreview}</span>
+          <div class="chat-item-status-row">
+            ${statusBadge}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  sidebarContainer.innerHTML = html;
+
+  // Add click listeners to chat items
+  const chatItems = sidebarContainer.querySelectorAll('.chat-item');
+  chatItems.forEach(item => {
+    item.addEventListener('click', () => {
+      activeChatPhone = item.getAttribute('data-phone');
+      // Highlight active
+      chatItems.forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      const messagesContainer = document.getElementById('livechat-messages-container');
+      if (messagesContainer) {
+        messagesContainer.setAttribute('data-just-opened', 'true');
+      }
+      renderActiveChat();
+    });
+  });
+
+  // Keep the active conversation view updated in real-time as well
+  renderActiveChat();
+}
+
+// Render the active chat conversation message list and info header
+function renderActiveChat() {
+  const emptyState = document.getElementById('livechat-empty-state');
+  const activeWrapper = document.getElementById('livechat-active-wrapper');
+  if (!emptyState || !activeWrapper) return;
+
+  if (!activeChatPhone) {
+    emptyState.style.display = 'flex';
+    activeWrapper.style.display = 'none';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  activeWrapper.style.display = 'flex';
+
+  const contact = contactsList.find(c => c.phone === activeChatPhone);
+  if (!contact) return;
+
+  // Header Details
+  document.getElementById('livechat-avatar').textContent = contact.name ? contact.name.trim().substring(0, 2) : 'U';
+  document.getElementById('livechat-contact-name').textContent = contact.name;
+  document.getElementById('livechat-contact-phone').textContent = `+${contact.phone}`;
+  document.getElementById('livechat-contact-notes').textContent = `נושא: ${contact.notes || 'כללי'}`;
+
+  // Live status badge in header
+  const statusBadge = document.getElementById('livechat-contact-status');
+  const delayedReplies = systemStatus.delayedReplies || [];
+  const nightQueue = systemStatus.nightQueue || [];
+  const isDelayed = delayedReplies.find(r => r.phone === contact.phone);
+  const isNightQueued = nightQueue.find(q => q.phone === contact.phone);
+
+  if (isDelayed) {
+    const minLeft = Math.ceil((new Date(isDelayed.sendAfter) - Date.now()) / 60000);
+    statusBadge.className = 'badge badge-violet';
+    statusBadge.textContent = minLeft > 0 ? `עסוק ⏳ (עונה בעוד ${minLeft} דק')` : 'עסוק ⏳';
+  } else if (isNightQueued) {
+    statusBadge.className = 'badge badge-gray';
+    statusBadge.textContent = 'ממתין לבוקר 🌙';
+  } else if (!contact.enabled) {
+    statusBadge.className = 'badge badge-gray';
+    statusBadge.textContent = 'מערכת כבויה ❌';
+  } else {
+    statusBadge.className = 'badge badge-green';
+    statusBadge.textContent = 'חופשי 🟢';
+  }
+
+  // Filter and sort conversation logs (oldest first for chronological order)
+  const conversationLogs = logsList
+    .filter(log => log.phone === activeChatPhone && log.type === 'message')
+    .slice() // copy to avoid mutating original
+    .reverse(); // reverse oldest-first
+
+  const messagesContainer = document.getElementById('livechat-messages-container');
+  if (conversationLogs.length === 0) {
+    messagesContainer.innerHTML = '<div class="system-bubble">אין הודעות קודמות. שלח הודעה כדי להתחיל שיחה!</div>';
+    return;
+  }
+
+  let html = '';
+  conversationLogs.forEach(log => {
+    const isOutgoing = log.isOutgoing === true;
+    const bubbleClass = isOutgoing ? 'outgoing' : 'incoming';
+    const timeStr = log.timestamp 
+      ? new Date(log.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+      : '';
+
+    // Handle bubble splitting representation in the chat view
+    const messageParts = (log.message || '').split('||');
+    
+    messageParts.forEach((part, index) => {
+      const cleanPart = part.trim();
+      if (!cleanPart) return;
+
+      html += `
+        <div class="chat-bubble ${bubbleClass}">
+          ${!isOutgoing && index === 0 ? `<span class="msg-sender">${contact.name}</span>` : ''}
+          <div class="msg-text">${cleanPart}</div>
+          <span class="msg-time">${timeStr}</span>
+        </div>
+      `;
+    });
+  });
+
+  // Save current scroll position, only scroll to bottom if user is close to bottom
+  const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.clientHeight - messagesContainer.scrollTop < 60;
+  
+  messagesContainer.innerHTML = html;
+
+  if (wasAtBottom || messagesContainer.innerHTML.includes('system-bubble') || messagesContainer.getAttribute('data-just-opened') === 'true') {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    messagesContainer.removeAttribute('data-just-opened');
+  }
+}
+
+// Submit handler to send a manual message from Live Chat
+async function handleLiveChatSend(e) {
+  e.preventDefault();
+  const input = document.getElementById('livechat-input');
+  if (!input) return;
+
+  const message = input.value.trim();
+  if (!message || !activeChatPhone) return;
+
+  const sendBtn = document.getElementById('livechat-send-btn');
+  try {
+    input.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
+
+    const res = await fetchAPI('/api/chat/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        phone: activeChatPhone,
+        message: message
+      })
+    });
+
+    if (res.success) {
+      input.value = '';
+      
+      // Inject the manual message directly to local logsList to prevent lag
+      const tempLog = {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: new Date().toISOString(),
+        type: 'message',
+        details: 'Sent manual message',
+        message: message,
+        phone: activeChatPhone,
+        isOutgoing: true
+      };
+      
+      logsList.unshift(tempLog); // add to top of cache
+      
+      // Force scroll to bottom by setting flag
+      const messagesContainer = document.getElementById('livechat-messages-container');
+      if (messagesContainer) {
+        messagesContainer.setAttribute('data-just-opened', 'true');
+      }
+
+      showNotification('ההודעה נשלחה בהצלחה!', 'success');
+      
+      // Instantly refresh UI
+      updateLiveChatUI();
+      
+      // Fetch status in background to update queues
+      fetchStatus();
+    }
+  } catch (err) {
+    console.error('Failed to send manual message:', err);
+    showNotification('שגיאה בשליחת הודעה: ' + err.message, 'error');
+  } finally {
+    input.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+    input.focus();
   }
 }

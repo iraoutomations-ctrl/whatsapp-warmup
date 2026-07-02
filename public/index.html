@@ -105,6 +105,7 @@
     <nav class="nav-tabs">
       <button class="tab-btn active" data-tab="overview">📊 סקירה כללית</button>
       <button class="tab-btn" data-tab="contacts">👥 אנשי קשר מודרכים</button>
+      <button class="tab-btn" data-tab="livechat">💬 צ'אט בזמן אמת</button>
       <button class="tab-btn" data-tab="simulator">🤖 סימולטור שיחות</button>
       <button class="tab-btn" data-tab="settings">⚙️ הגדרות מערכת</button>
     </nav>
@@ -157,6 +158,58 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Panel: Live Chat -->
+      <div class="tab-content" id="tab-livechat">
+        <div class="livechat-layout">
+          <!-- Left Column: Chats List -->
+          <div class="chat-sidebar">
+            <div class="sidebar-header">
+              <h3>צ'אטים פעילים</h3>
+            </div>
+            <div class="chat-list" id="livechat-list">
+              <div class="empty-state">טוען אנשי קשר...</div>
+            </div>
+          </div>
+
+          <!-- Right Column: Active Conversation -->
+          <div class="chat-main-view" id="livechat-main-view">
+            <div class="empty-chat-state" id="livechat-empty-state">
+              <div class="empty-chat-icon">💬</div>
+              <h4>בחר איש קשר מהרשימה כדי להתחיל להתכתב</h4>
+              <p>כאן תוכל לצפות בהיסטוריית השיחה המלאה ולשלוח הודעות ידניות שיעקפו את הבוט במידת הצורך.</p>
+            </div>
+            
+            <div class="chat-active-wrapper" id="livechat-active-wrapper" style="display: none;">
+              <!-- Chat Header -->
+              <div class="chat-active-header">
+                <div class="chat-avatar" id="livechat-avatar">U</div>
+                <div class="chat-contact-info">
+                  <div class="chat-contact-name" id="livechat-contact-name">שם איש קשר</div>
+                  <div class="chat-contact-phone" id="livechat-contact-phone">972500000000</div>
+                </div>
+                <div class="chat-contact-context">
+                  <span class="chat-context-badge" id="livechat-contact-notes">נושא: כללי</span>
+                </div>
+                <div class="chat-status-container">
+                  <span class="badge" id="livechat-contact-status">טוען סטטוס...</span>
+                </div>
+              </div>
+
+              <!-- Chat Messages Body -->
+              <div class="chat-active-body" id="livechat-messages-container">
+                <!-- Messages will be injected here -->
+              </div>
+
+              <!-- Chat Footer Input -->
+              <form class="chat-active-footer" id="livechat-send-form">
+                <input type="text" id="livechat-input" placeholder="הקלד הודעה..." autocomplete="off" required>
+                <button type="submit" class="btn btn-primary" id="livechat-send-btn">שלח ✉️</button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
 
