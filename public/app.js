@@ -250,7 +250,8 @@ function updateStatusUI() {
     if (config.lastStatusPostType === 'image') {
       statusPreviewVal.textContent = `"${config.lastStatusPostCaption || ''}"`;
       statusImagePreviewBox.style.display = 'block';
-      statusPreviewImg.src = `/assets/status_images/${config.lastStatusPostFile}`;
+      statusPreviewImg.onerror = () => { statusPreviewImg.src = '/assets/status_images/tel_aviv_sunrise.png'; };
+      statusPreviewImg.src = `/assets/status_images/${config.lastStatusPostFile || 'last_status.jpg'}`;
     } else if (config.lastStatusPostType === 'text') {
       statusPreviewVal.textContent = `"${config.lastStatusPostText || ''}"`;
       statusImagePreviewBox.style.display = 'none';
@@ -302,91 +303,91 @@ document.querySelectorAll('#settings-form input, #settings-form select').forEach
 // Update Logs View
 function updateLogsUI() {
   if (logsList.length === 0) {
-    logsListContainer.innerHTML = '<div class="empty-state">אין לוגים להצגה כרגע.</div>';
+    const emptyHtml = '<div class="empty-state">אין לוגים להצגה כרגע.</div>';
+    if (logsListContainer.innerHTML !== emptyHtml) logsListContainer.innerHTML = emptyHtml;
     return;
   }
 
-  logsListContainer.innerHTML = '';
+  let html = '';
   logsList.forEach(log => {
-    const logItem = document.createElement('div');
-    logItem.className = `log-item ${log.type}`;
-    
     const timeStr = new Date(log.timestamp).toLocaleTimeString();
-    
     let detailsHtml = `<strong>[${log.type.toUpperCase()}]</strong> ${log.details}`;
     if (log.message) {
       detailsHtml += `<span class="log-text-msg">${log.message}</span>`;
     }
-    
-    logItem.innerHTML = `
-      <span class="log-time">${timeStr}</span>
-      <span class="log-content">${detailsHtml}</span>
+    html += `
+      <div class="log-item ${log.type}">
+        <span class="log-time">${timeStr}</span>
+        <span class="log-content">${detailsHtml}</span>
+      </div>
     `;
-    
-    logsListContainer.appendChild(logItem);
   });
+
+  if (logsListContainer.innerHTML !== html) {
+    const scrollTop = logsListContainer.scrollTop;
+    logsListContainer.innerHTML = html;
+    logsListContainer.scrollTop = scrollTop;
+  }
 }
 
 // Update Guided Contacts List View
 function updateContactsUI() {
   if (contactsList.length === 0) {
-    contactsTableBody.innerHTML = `
+    const emptyHtml = `
       <tr>
         <td colspan="7" class="text-center text-muted italic">טרם הוגדרו אנשי קשר מודרכים.</td>
       </tr>
     `;
+    if (contactsTableBody.innerHTML !== emptyHtml) contactsTableBody.innerHTML = emptyHtml;
     return;
   }
 
-  contactsTableBody.innerHTML = '';
+  let html = '';
   contactsList.forEach(contact => {
-    const tr = document.createElement('tr');
-    
     const lastActive = contact.lastInteractionAt 
       ? new Date(contact.lastInteractionAt).toLocaleString() 
       : 'ללא פעילות';
       
-    tr.innerHTML = `
-      <td><strong>${contact.name}</strong></td>
-      <td>${contact.phone}</td>
-      <td class="text-muted">${contact.notes || '-'}</td>
-      <td>${contact.messageCount}</td>
-      <td><small>${lastActive}</small></td>
-      <td>
-        <label class="toggle-switch">
-          <input type="checkbox" ${contact.enabled ? 'checked' : ''} onchange="toggleContact('${contact.phone}', this.checked)">
-          <span class="slider"></span>
-        </label>
-      </td>
-      <td>
-        <div class="actions-cell">
-          <button class="btn btn-sm btn-outline" onclick="triggerStarter('${contact.phone}')" title="שלח הודעה יזומה מידית">Initiate ⚡</button>
-          <button class="btn btn-sm btn-outline" style="border-color: rgba(239, 68, 68, 0.3); color: #fca5a5" onclick="deleteContact('${contact.phone}')" title="מחק">מחק 🗑️</button>
-        </div>
-      </td>
+    html += `
+      <tr>
+        <td><strong>${contact.name}</strong></td>
+        <td>${contact.phone}</td>
+        <td class="text-muted">${contact.notes || '-'}</td>
+        <td>${contact.messageCount}</td>
+        <td><small>${lastActive}</small></td>
+        <td>
+          <label class="toggle-switch">
+            <input type="checkbox" ${contact.enabled ? 'checked' : ''} onchange="toggleContact('${contact.phone}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td>
+        <td>
+          <div class="actions-cell">
+            <button class="btn btn-sm btn-outline" onclick="triggerStarter('${contact.phone}')" title="שלח הודעה יזומה מידית">Initiate ⚡</button>
+            <button class="btn btn-sm btn-outline" style="border-color: rgba(239, 68, 68, 0.3); color: #fca5a5" onclick="deleteContact('${contact.phone}')" title="מחק">מחק 🗑️</button>
+          </div>
+        </td>
+      </tr>
     `;
-    
-    contactsTableBody.appendChild(tr);
   });
+
+  if (contactsTableBody.innerHTML !== html) {
+    contactsTableBody.innerHTML = html;
+  }
 }
 
 // Update Simulator Contact select list
 function updateSimulatorDropdown() {
-  // Save current selection JID
   const currentSelected = simContactSelect.value;
-  
-  simContactSelect.innerHTML = '<option value="">-- בחר איש קשר מודרך --</option>';
-  
+  let html = '<option value="">-- בחר איש קשר מודרך --</option>';
   contactsList.forEach(contact => {
-    const option = document.createElement('option');
-    option.value = contact.phone;
-    option.textContent = `${contact.name} (${contact.phone})`;
-    simContactSelect.appendChild(option);
+    html += `<option value="${contact.phone}">${contact.name} (${contact.phone})</option>`;
   });
-  
-  // Re-select
-  if (currentSelected) {
-    simContactSelect.value = currentSelected;
+  if (simContactSelect.innerHTML !== html) {
+    simContactSelect.innerHTML = html;
+    if (currentSelected) {
+      simContactSelect.value = currentSelected;
+    }
   }
 }
 
@@ -823,23 +824,27 @@ function updateLiveChatUI() {
     `;
   });
 
-  sidebarContainer.innerHTML = html;
+  if (sidebarContainer.innerHTML !== html) {
+    const scrollTop = sidebarContainer.scrollTop;
+    sidebarContainer.innerHTML = html;
+    sidebarContainer.scrollTop = scrollTop;
 
-  // Add click listeners to chat items
-  const chatItems = sidebarContainer.querySelectorAll('.chat-item');
-  chatItems.forEach(item => {
-    item.addEventListener('click', () => {
-      activeChatPhone = item.getAttribute('data-phone');
-      // Highlight active
-      chatItems.forEach(i => i.classList.remove('active'));
-      item.classList.add('active');
-      const messagesContainer = document.getElementById('livechat-messages-container');
-      if (messagesContainer) {
-        messagesContainer.setAttribute('data-just-opened', 'true');
-      }
-      renderActiveChat();
+    // Add click listeners to chat items
+    const chatItems = sidebarContainer.querySelectorAll('.chat-item');
+    chatItems.forEach(item => {
+      item.addEventListener('click', () => {
+        activeChatPhone = item.getAttribute('data-phone');
+        // Highlight active
+        chatItems.forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        const messagesContainer = document.getElementById('livechat-messages-container');
+        if (messagesContainer) {
+          messagesContainer.setAttribute('data-just-opened', 'true');
+        }
+        renderActiveChat();
+      });
     });
-  });
+  }
 
   // Keep the active conversation view updated in real-time as well
   renderActiveChat();
@@ -928,14 +933,14 @@ function renderActiveChat() {
     });
   });
 
-  // Save current scroll position, only scroll to bottom if user is close to bottom
-  const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.clientHeight - messagesContainer.scrollTop < 60;
-  
-  messagesContainer.innerHTML = html;
+  if (messagesContainer.innerHTML !== html) {
+    const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.clientHeight - messagesContainer.scrollTop < 60;
+    messagesContainer.innerHTML = html;
 
-  if (wasAtBottom || messagesContainer.innerHTML.includes('system-bubble') || messagesContainer.getAttribute('data-just-opened') === 'true') {
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    messagesContainer.removeAttribute('data-just-opened');
+    if (wasAtBottom || messagesContainer.innerHTML.includes('system-bubble') || messagesContainer.getAttribute('data-just-opened') === 'true') {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      messagesContainer.removeAttribute('data-just-opened');
+    }
   }
 }
 

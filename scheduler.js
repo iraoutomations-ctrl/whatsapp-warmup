@@ -487,6 +487,7 @@ class WarmupScheduler {
         // Save the image locally so the dashboard UI can display it
         const localSavePath = path.join(__dirname, 'public', 'assets', 'status_images', 'last_status.jpg');
         try {
+          await fs.mkdir(path.dirname(localSavePath), { recursive: true });
           await fs.writeFile(localSavePath, buffer);
         } catch (saveErr) {
           console.error('Failed to save last status image locally:', saveErr);
