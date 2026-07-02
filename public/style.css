@@ -1194,12 +1194,14 @@ textarea {
 .livechat-layout {
   display: grid;
   grid-template-columns: 300px 1fr;
+  /* Single row that fills everything */
+  grid-template-rows: 1fr;
   gap: 0;
   background: var(--bg-surface-alt);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  /* 380px accounts for: header(~70) + metrics(~130) + nav(~56) + paddings/margins(~124) */
+  /* 380px = header(70) + metrics(130) + nav(56) + margins/paddings(124) */
   height: calc(100vh - 380px);
   min-height: 480px;
   max-height: 800px;
@@ -1343,10 +1345,8 @@ textarea {
 
 /* Chat Main View */
 .chat-main-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  position: relative;
+  display: grid;
+  grid-template-rows: 1fr;
   min-height: 0;
   overflow: hidden;
 }
@@ -1384,11 +1384,10 @@ textarea {
 }
 
 .chat-active-wrapper {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  /* Grid with 3 explicit rows: header(auto) + messages(1fr = remaining) + footer(auto) */
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   min-height: 0;
-  flex: 1;
   overflow: hidden;
 }
 
@@ -1467,7 +1466,7 @@ textarea {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
-  flex: 1;
+  /* flex: 1 removed - grid row (1fr) handles sizing now */
 }
 
 /* Chat Footer Form */

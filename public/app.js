@@ -848,7 +848,7 @@ function renderActiveChat() {
   }
 
   emptyState.style.display = 'none';
-  activeWrapper.style.display = 'flex';
+  activeWrapper.style.display = 'grid';
 
   const contact = contactsList.find(c => c.phone === activeChatPhone);
   if (!contact) return;
