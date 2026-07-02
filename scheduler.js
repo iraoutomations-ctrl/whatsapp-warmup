@@ -159,7 +159,7 @@ class WarmupScheduler {
   /**
    * Queues an incoming message for response in the morning if night rest mode is on.
    */
-  async queueNightMessage(phone, messageText, contactName) {
+  async queueNightMessage(phone, messageText, contactName, msgKey, remoteJid) {
     const settings = db.getSettings();
     const nightQueue = settings.nightQueue || [];
     
@@ -168,12 +168,16 @@ class WarmupScheduler {
     if (existingIdx !== -1) {
       // Overwrite/update with latest message
       nightQueue[existingIdx].messageText = messageText;
+      nightQueue[existingIdx].msgKey = msgKey;
+      nightQueue[existingIdx].remoteJid = remoteJid;
       nightQueue[existingIdx].timestamp = new Date().toISOString();
     } else {
       nightQueue.push({
         phone,
         contactName,
         messageText,
+        msgKey,
+        remoteJid,
         timestamp: new Date().toISOString()
       });
     }
@@ -201,28 +205,55 @@ class WarmupScheduler {
     console.log(`Processing night queue message for ${item.contactName || item.phone}...`);
     await db.addLog('info', `Processing overnight queued reply for ${item.contactName || item.phone}...`, item.messageText, item.phone);
 
-    try {
-      // Load history
-      const logs = db.getLogs().filter(log => log.phone === item.phone);
-      const conversationHistory = logs.slice(0, 10).reverse();
+    // Process asynchronously to stagger and not block loop execution
+    setTimeout(async () => {
+      try {
+        // 1. Go Online (available)
+        await sendTypingState(item.phone, 'available', 1500);
 
-      const replyText = await generateReply(
-        item.contactName,
-        item.messageText,
-        conversationHistory,
-        settings.currentDay
-      );
+        // 2. Mark Read (V כחול)
+        if (item.remoteJid && item.msgKey) {
+          await markRead(item.remoteJid, item.msgKey);
+        }
 
-      // Stagger sending slightly to simulate realistic morning check-in behavior
-      const typingDelay = Math.floor(Math.random() * 5000) + 3000; // 3-8 seconds
-      
-      // We will send it
-      await sendMessage(item.phone, replyText, true);
-      await db.addLog('success', `Sent overnight queued response to ${item.contactName || item.phone}`);
-    } catch (err) {
-      console.error('Failed to process night queue item:', err);
-      await db.addLog('error', `Failed to reply to overnight queued message for ${item.phone}: ${err.message}`);
-    }
+        // 3. Stagger delay (simulate reading: 1.5 seconds)
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // 4. Load history and Generate Reply
+        const logs = db.getLogs().filter(log => log.phone === item.phone);
+        const conversationHistory = logs.slice(0, 10).reverse();
+
+        const replyText = await generateReply(
+          item.contactName,
+          item.messageText,
+          conversationHistory,
+          settings.currentDay
+        );
+
+        // 5. Send reaction or message reply (support reactions too!)
+        const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
+        if (reactionMatch) {
+          const emoji = reactionMatch[1].trim();
+          if (item.remoteJid && item.msgKey) {
+            const success = await sendReaction(item.remoteJid, emoji, item.msgKey);
+            if (!success) {
+              await sendMessage(item.phone, emoji, true);
+            }
+          } else {
+            await sendMessage(item.phone, emoji, true);
+          }
+        } else {
+          await sendMessage(item.phone, replyText, true);
+        }
+
+        // 6. Go Offline (unavailable)
+        await sendTypingState(item.phone, 'unavailable', 500);
+        await db.addLog('success', `Sent overnight queued response to ${item.contactName || item.phone}`);
+      } catch (err) {
+        console.error('Failed to process night queue item:', err);
+        await db.addLog('error', `Failed to reply to overnight queued message for ${item.phone}: ${err.message}`);
+      }
+    }, 100);
   }
 
   /**
