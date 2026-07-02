@@ -1381,6 +1381,7 @@ textarea {
   align-items: center;
   gap: 12px;
   backdrop-filter: blur(10px);
+  flex-shrink: 0;
 }
 
 .chat-avatar {
@@ -1447,6 +1448,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
 }
 
 /* Chat Footer Form */
@@ -1456,6 +1458,7 @@ textarea {
   border-top: 1px solid var(--border-subtle);
   display: flex;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .chat-active-footer input[type="text"] {
