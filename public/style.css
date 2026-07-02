@@ -1199,15 +1199,18 @@ textarea {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  height: 580px;
-  min-height: 580px;
+  /* 380px accounts for: header(~70) + metrics(~130) + nav(~56) + paddings/margins(~124) */
+  height: calc(100vh - 380px);
+  min-height: 480px;
+  max-height: 800px;
   box-shadow: var(--shadow-card);
 }
 
 @media (max-width: 900px) {
   .livechat-layout {
     grid-template-columns: 1fr;
-    height: auto;
+    height: calc(100vh - 320px);
+    min-height: 500px;
   }
   .chat-sidebar {
     height: 250px;
