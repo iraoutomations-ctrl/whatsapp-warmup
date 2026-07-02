@@ -193,7 +193,7 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
         await db.addLog('info', `Calling Gemini to generate reply for ${phone}`);
         const logs = db.getLogs().filter(log => log.phone === phone);
         const history = logs.slice(0, 10).reverse();
-        const replyText = await generateReply(contact.name, messageText, history, config.currentDay);
+        const replyText = await generateReply(contact.name, messageText, history, config.currentDay, contact.notes);
         await db.addLog('info', `Gemini response generated for ${phone}: "${replyText}"`);
 
         // 6. Send reaction or message reply

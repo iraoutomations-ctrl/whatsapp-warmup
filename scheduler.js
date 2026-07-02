@@ -143,7 +143,7 @@ class WarmupScheduler {
     await db.addLog('info', `Active Warmup: Selected ${targetContact.name} (${targetContact.phone}) for starting conversation.`);
 
     try {
-      const message = await generateStarter(targetContact.name, config.currentDay);
+      const message = await generateStarter(targetContact.name, config.currentDay, targetContact.notes);
       if (!message) {
         throw new Error('Gemini failed to generate starter message');
       }
@@ -222,12 +222,16 @@ class WarmupScheduler {
         // 4. Load history and Generate Reply
         const logs = db.getLogs().filter(log => log.phone === item.phone);
         const conversationHistory = logs.slice(0, 10).reverse();
+        
+        const contact = db.getContacts().find(c => c.phone === item.phone);
+        const contactNotes = contact ? contact.notes : '';
 
         const replyText = await generateReply(
           item.contactName,
           item.messageText,
           conversationHistory,
-          settings.currentDay
+          settings.currentDay,
+          contactNotes
         );
 
         // 5. Send reaction or message reply (support reactions too!)
@@ -322,7 +326,11 @@ class WarmupScheduler {
             await db.addLog('info', `Calling Gemini for delayed reply to ${reply.phone}`);
             const logs = db.getLogs().filter(log => log.phone === reply.phone);
             const history = logs.slice(0, 10).reverse();
-            const replyText = await generateReply(reply.contactName, reply.messageText, history, config.currentDay);
+            
+            const contact = db.getContacts().find(c => c.phone === reply.phone);
+            const contactNotes = contact ? contact.notes : '';
+
+            const replyText = await generateReply(reply.contactName, reply.messageText, history, config.currentDay, contactNotes);
             await db.addLog('info', `Gemini response generated for delayed reply to ${reply.phone}: "${replyText}"`);
 
             // 5. Send reaction or message reply

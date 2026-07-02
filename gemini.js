@@ -83,17 +83,18 @@ export async function callGemini(systemPrompt, userPrompt, temperature = 0.8) {
 /**
  * Generates an active warmup conversation starter.
  */
-export async function generateStarter(contactName, currentDay) {
+export async function generateStarter(contactName, currentDay, contactNotes = '') {
   const systemPrompt = `
 אתה עוזר בניסוח הודעת פתיחה ספונטנית בעברית עבור מספר וואטסאפ של משרד יוזמה, במטרה לחמם את המספר מול מנגנוני ה-Anti-Spam של וואטסאפ.
 ההודעה צריכה להיראות כאילו נשלחה על ידי בן אדם אמיתי, עובד משרד, לחבר או קולגה.
+
+${contactNotes ? `חוק קריטי: הנושא או ההקשר הייחודי שהוגדר לשיחה עם איש קשר זה הוא: "${contactNotes}". עליך לפתוח את השיחה ישירות סביב נושא זה בצורה חברית/מקצועית וספונטנית (למשל, לשאול עליו שאלה, לבקש לגביו עדכון, או לשתף משהו קטן שקשור אליו).` : 'נושאים הגיוניים כלליים: פגישות עבודה, מסמכים, מיילים, סמול טוק קצר, או בקשת עזרה קלה.'}
 
 חוקים נוקשים:
 1. הודעה קצרה מאוד (משפט אחד, עד 10 מילים).
 2. שפה טבעית, יומיומית, ספונטנית ועברית מדוברת (ללא שגיאות כתיב מכוונות מוגזמות, אך מותר פה ושם, בערך ב-10% מהמקרים, לעשות שגיאת הקלדה קלה או קיצור אופייני של הקלדה מהירה בנייד, למשל "הי" במקום "היי", "מצגת" במקום "המצגת").
 3. ללא סימני קריאה מוגזמים, ללא אימוג'ים בכלל, ללא פניות רשמיות ("שלום רב", "בוקר טוב אדוני").
-4. נושאים הגיוניים: פגישות עבודה, מסמכים, מיילים, סמול טוק קצר, טעות במספר ידידותית, או בקשת עזרה קלה.
-5. אם שם איש הקשר אינו "Unknown", שלב אותו לפעמים בצורה טבעית (למשל: "היי יוסי, מתי נפגשים השבוע?"). אם הוא "Unknown", אל תשתמש בשם.
+4. אם שם איש הקשר אינו "Unknown", שלב אותו לפעמים בצורה טבעית (למשל: "היי יוסי, מתי נפגשים השבוע?"). אם הוא "Unknown", אל תשתמש בשם.
 `;
 
   const userPrompt = `
@@ -108,10 +109,12 @@ export async function generateStarter(contactName, currentDay) {
 /**
  * Generates a reply to an incoming message based on context.
  */
-export async function generateReply(contactName, lastMessage, chatHistory, currentDay) {
+export async function generateReply(contactName, lastMessage, chatHistory, currentDay, contactNotes = '') {
   const systemPrompt = `
 אתה מייצג אדם אמיתי שעונה להודעות וואטסאפ בעברית ממספר של משרד יוזמה, כחלק מתהליך חימום מספר.
 המטרה היא לנהל שיחה קצרה, אנושית, אמינה וזורמת עם איש הקשר.
+
+${contactNotes ? `חוק קריטי: ההקשר/הערות השיחה שהוגדרו עבור איש קשר זה הם: "${contactNotes}". עליך לכוון את השיחה איתו בצורה חכמה, טבעית ומרומזת סביב הנושא הזה, להתייחס אליו ולזרום איתו במהלך ההתכתבות.` : ''}
 
 חוקים נוקשים:
 1. אורך התשובה דינמי וקשוב להקשר של השיחה:
