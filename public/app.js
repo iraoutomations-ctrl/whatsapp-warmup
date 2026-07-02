@@ -752,8 +752,13 @@ function updateLiveChatUI() {
   const delayedReplies = systemStatus.delayedReplies || [];
   const nightQueue = systemStatus.nightQueue || [];
 
-  // Sort contacts by name
-  const contacts = [...contactsList];
+  // Sort contacts by last interaction (most recent first)
+  const contacts = [...contactsList].sort((a, b) => {
+    const timeA = a.lastInteractionAt ? new Date(a.lastInteractionAt).getTime() : 0;
+    const timeB = b.lastInteractionAt ? new Date(b.lastInteractionAt).getTime() : 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return (a.name || '').localeCompare(b.name || '');
+  });
 
   if (contacts.length === 0) {
     sidebarContainer.innerHTML = '<div class="empty-state">אין אנשי קשר מוגדרים.</div>';
@@ -843,7 +848,7 @@ function renderActiveChat() {
   }
 
   emptyState.style.display = 'none';
-  activeWrapper.style.display = 'flex';
+  activeWrapper.style.display = 'grid';
 
   const contact = contactsList.find(c => c.phone === activeChatPhone);
   if (!contact) return;

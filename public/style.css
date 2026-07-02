@@ -1367,8 +1367,8 @@ textarea {
 }
 
 .chat-active-wrapper {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   height: 100%;
   min-height: 0;
 }
