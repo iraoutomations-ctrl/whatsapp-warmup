@@ -149,7 +149,7 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     const existingReplyIdx = delayedReplies.findIndex(r => r.phone === phone);
     const isAlreadyDelayed = existingReplyIdx !== -1;
 
-    const shouldDelay = isAlreadyDelayed || (config.busySimulationEnabled && Math.random() < config.busySimulationChance);
+    const shouldDelay = config.busySimulationEnabled && (isAlreadyDelayed || Math.random() < config.busySimulationChance);
     if (shouldDelay) {
       if (isAlreadyDelayed) {
         // Update the queued reply with the latest message text and key

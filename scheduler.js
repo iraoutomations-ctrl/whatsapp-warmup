@@ -260,7 +260,7 @@ class WarmupScheduler {
     const remaining = [];
 
     for (const reply of delayedReplies) {
-      if (now >= new Date(reply.sendAfter)) {
+      if (!config.busySimulationEnabled || now >= new Date(reply.sendAfter)) {
         toProcess.push(reply);
       } else {
         remaining.push(reply);
