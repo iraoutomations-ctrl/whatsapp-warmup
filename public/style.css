@@ -1332,6 +1332,7 @@ textarea {
   height: 100%;
   position: relative;
   min-height: 0;
+  overflow: hidden;
 }
 
 .empty-chat-state {
@@ -1372,6 +1373,7 @@ textarea {
   height: 100%;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .chat-active-header {
