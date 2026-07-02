@@ -90,6 +90,55 @@ export async function sendTypingState(number, presence = 'composing', delayMs = 
 }
 
 /**
+ * Helper to introduce minor, realistic typos in Hebrew words (5% chance)
+ */
+function introduceTypo(text) {
+  if (!text || (text.startsWith('[') && text.endsWith(']')) || text.length < 5) return text;
+  
+  // 5% chance of introducing a typo
+  if (Math.random() > 0.05) return text;
+
+  const words = text.split(' ');
+  if (words.length === 0) return text;
+
+  // Find index of Hebrew words that are eligible (length >= 3, pure letters)
+  const eligibleIndices = [];
+  const hebrewWordRegex = /^[\u0590-\u05fe]{3,}$/;
+  for (let i = 0; i < words.length; i++) {
+    if (hebrewWordRegex.test(words[i])) {
+      eligibleIndices.push(i);
+    }
+  }
+
+  if (eligibleIndices.length === 0) return text;
+  const targetWordIdx = eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)];
+  let word = words[targetWordIdx];
+
+  const typoType = Math.floor(Math.random() * 3);
+  if (typoType === 0) {
+    // 1. Duplicate last character (e.g., "סבבה" -> "סבבהה", "כן" -> "כןן")
+    word = word + word[word.length - 1];
+  } else if (typoType === 1 && word.length > 3) {
+    // 2. Swap two adjacent middle characters (e.g., "בוקר" -> "בוק ר")
+    const idx = Math.floor(Math.random() * (word.length - 2)) + 1;
+    const chars = word.split('');
+    const temp = chars[idx];
+    chars[idx] = chars[idx + 1];
+    chars[idx + 1] = temp;
+    word = chars.join('');
+  } else if (typoType === 2 && word.length > 3) {
+    // 3. Drop a character in the middle (e.g., "מצוין" -> "מצין")
+    const idx = Math.floor(Math.random() * (word.length - 2)) + 1;
+    word = word.slice(0, idx) + word.slice(idx + 1);
+  }
+
+  words[targetWordIdx] = word;
+  const typoedText = words.join(' ');
+  console.log(`Typo introduced: "${text}" -> "${typoedText}"`);
+  return typoedText;
+}
+
+/**
  * Sends a text message to a number.
  * Automatically handles sending typing presence beforehand.
  */
@@ -110,16 +159,19 @@ export async function sendMessage(number, text, simulateTyping = true) {
     return allSuccess;
   }
 
+  // Apply minor typo simulation (5% chance per bubble)
+  const processedText = introduceTypo(text);
+
   const isGroup = number.endsWith('@g.us');
   const cleanNumber = isGroup ? number : number.split('@')[0];
   
   if (simulateTyping) {
     // Determine typing delay based on message length (approx. 50ms per character, min 2s, max 6s)
-    const delay = Math.min(Math.max(text.length * 50, 2000), 6000);
+    const delay = Math.min(Math.max(processedText.length * 50, 2000), 6000);
     await sendTypingState(cleanNumber, 'composing', delay);
   }
 
-  console.log(`Sending message to ${cleanNumber}: "${text}"`);
+  console.log(`Sending message to ${cleanNumber}: "${processedText}"`);
 
   // We attempt to send using the advanced message format which supports composing options natively,
   // but if the instance setup is custom, we also include a fallback or simple keys.
@@ -131,10 +183,10 @@ export async function sendMessage(number, text, simulateTyping = true) {
       linkPreview: true
     },
     textMessage: {
-      text: text
+      text: processedText
     },
     // Adding standard fallback keys for different Evolution versions
-    text: text
+    text: processedText
   };
 
   const result = await callEvolutionAPI('/message/sendText', 'POST', payload);
