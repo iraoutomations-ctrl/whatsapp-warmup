@@ -258,6 +258,8 @@ function updateStatusUI() {
     document.getElementById('setting-warmup-enabled').checked = config.warmupEnabled;
     document.getElementById('setting-rest-start').value = config.nightRestStart;
     document.getElementById('setting-rest-end').value = config.nightRestEnd;
+    document.getElementById('setting-night-rest-enabled').checked = config.nightRestEnabled !== false;
+    document.getElementById('setting-busy-simulation-enabled').checked = config.busySimulationEnabled !== false;
     document.getElementById('setting-interval-min').value = config.activeMinIntervalMinutes;
     document.getElementById('setting-interval-max').value = config.activeMaxIntervalMinutes;
     
@@ -408,6 +410,8 @@ async function handleSaveSettings(e) {
     warmupEnabled: document.getElementById('setting-warmup-enabled').checked,
     nightRestStart: document.getElementById('setting-rest-start').value,
     nightRestEnd: document.getElementById('setting-rest-end').value,
+    nightRestEnabled: document.getElementById('setting-night-rest-enabled').checked,
+    busySimulationEnabled: document.getElementById('setting-busy-simulation-enabled').checked,
     activeMinIntervalMinutes: parseInt(document.getElementById('setting-interval-min').value),
     activeMaxIntervalMinutes: parseInt(document.getElementById('setting-interval-max').value),
     

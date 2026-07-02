@@ -277,6 +277,13 @@ app.post('/api/settings', async (req, res) => {
       await scheduler.scheduleNextWarmup();
     }
 
+    // If busy simulation was toggled OFF, immediately process all queued delayed replies
+    if (req.body.busySimulationEnabled === false && oldSettings.busySimulationEnabled !== false) {
+      console.log('Busy simulation toggled OFF. Immediately processing all delayed replies...');
+      // Run asynchronously in the background
+      scheduler.processDelayedReplies();
+    }
+
     await db.addLog('success', 'System configurations updated via dashboard.');
     res.json({ success: true, settings: updated });
   } catch (err) {
