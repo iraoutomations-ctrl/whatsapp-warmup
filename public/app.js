@@ -130,6 +130,13 @@ function setupTabs() {
       
       button.classList.add('active');
       document.getElementById(`tab-${tabId}`).classList.add('active');
+
+      // Apply full-height mode when livechat tab is active
+      if (tabId === 'livechat') {
+        document.body.classList.add('livechat-mode');
+      } else {
+        document.body.classList.remove('livechat-mode');
+      }
     });
   });
 }
