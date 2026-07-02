@@ -489,11 +489,24 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+/* Live chat tab gets zero padding so the chat fills edge-to-edge */
+.content-panel:has(#tab-livechat.active) {
+  padding: 0;
+  overflow: hidden;
+}
+
 .tab-content { display: none; }
 
 .tab-content.active {
   display: block;
   animation: panelIn 0.35s var(--ease-smooth) forwards;
+}
+
+/* Live chat tab must stretch to fill its panel */
+#tab-livechat.active {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 @keyframes panelIn {
@@ -1186,9 +1199,9 @@ textarea {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  height: 530px;
+  height: 580px;
+  min-height: 580px;
   box-shadow: var(--shadow-card);
-  min-height: 0;
 }
 
 @media (max-width: 900px) {

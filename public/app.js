@@ -833,7 +833,6 @@ function updateLiveChatUI() {
 
   // Keep the active conversation view updated in real-time as well
   renderActiveChat();
-  updateDiagnosticsUI();
 }
 
 // Render the active chat conversation message list and info header
@@ -992,66 +991,12 @@ async function handleLiveChatSend(e) {
   }
 }
 
-// Diagnostic overlay for layout debugging
-function runLayoutDiagnostics() {
-  const wrappers = document.querySelectorAll('#livechat-active-wrapper');
-  const wrapper = wrappers[0];
-  const header = document.querySelector('.chat-active-header');
-  const body = document.getElementById('livechat-messages-container');
-  const footer = document.getElementById('livechat-send-form');
-  const tabLiveChat = document.getElementById('tab-livechat');
-  const layout = document.querySelector('.livechat-layout');
-  
-  if (!wrapper) return { status: 'No wrapper found' };
-  
-  const wStyle = window.getComputedStyle(wrapper);
-  const hStyle = header ? window.getComputedStyle(header) : null;
-  const bStyle = body ? window.getComputedStyle(body) : null;
-  const fStyle = footer ? window.getComputedStyle(footer) : null;
-  const tabStyle = tabLiveChat ? window.getComputedStyle(tabLiveChat) : null;
-  const layoutStyle = layout ? window.getComputedStyle(layout) : null;
-  
-  return {
-    errors: window.__jsErrors || [],
-    duplicates: {
-      activeWrappers: wrappers.length,
-      messagesContainers: document.querySelectorAll('#livechat-messages-container').length,
-      sendForms: document.querySelectorAll('#livechat-send-form').length
-    },
-    tabLiveChat: tabStyle ? { display: tabStyle.display, clientHeight: tabLiveChat.clientHeight } : 'missing',
-    layout: layoutStyle ? { display: layoutStyle.display, height: layoutStyle.height, clientHeight: layout.clientHeight } : 'missing',
-    wrapper: { display: wStyle.display, height: wStyle.height, clientHeight: wrapper.clientHeight, scrollHeight: wrapper.scrollHeight },
-    header: hStyle ? { display: hStyle.display, height: hStyle.height, clientHeight: header.clientHeight } : 'missing',
-    body: bStyle ? { display: bStyle.display, height: bStyle.height, clientHeight: body.clientHeight, scrollHeight: body.scrollHeight, overflowY: bStyle.overflowY } : 'missing',
-    footer: fStyle ? { display: fStyle.display, height: fStyle.height, clientHeight: footer.clientHeight, visibility: fStyle.visibility, opacity: fStyle.opacity, position: fStyle.position } : 'missing'
-  };
-}
-
-// Global error tracking for remote diagnostics
+// Global error tracking
 window.__jsErrors = [];
 window.onerror = function(message, source, lineno, colno, error) {
   const errStr = `${message} (line ${lineno})`;
   if (!window.__jsErrors.includes(errStr)) {
     window.__jsErrors.push(errStr);
   }
-  const diagDiv = document.getElementById('layout-diagnostics');
-  if (diagDiv) {
-    updateDiagnosticsUI();
-  }
   return false;
 };
-
-function updateDiagnosticsUI() {
-  let diagDiv = document.getElementById('layout-diagnostics');
-  if (!diagDiv) {
-    diagDiv = document.createElement('div');
-    diagDiv.id = 'layout-diagnostics';
-    diagDiv.style.cssText = 'position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.85); color: #00ff00; padding: 10px; font-family: monospace; font-size: 10px; z-index: 99999; border-radius: 4px; border: 1px solid #00ff00; pointer-events: none; max-width: 250px; white-space: pre-wrap; direction: ltr; text-align: left;';
-    const mainView = document.getElementById('livechat-main-view');
-    if (mainView) {
-      mainView.appendChild(diagDiv);
-    }
-  }
-  const data = runLayoutDiagnostics();
-  diagDiv.textContent = JSON.stringify(data, null, 2);
-}
