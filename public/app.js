@@ -155,6 +155,7 @@ async function loadData() {
 async function pollRealtimeData() {
   try {
     await fetchStatus();
+    await fetchContacts();
     await fetchLogs();
     updateLiveChatUI();
   } catch (err) {
@@ -963,19 +964,6 @@ async function handleLiveChatSend(e) {
     if (res.success) {
       input.value = '';
       
-      // Inject the manual message directly to local logsList to prevent lag
-      const tempLog = {
-        id: Math.random().toString(36).substring(2, 9),
-        timestamp: new Date().toISOString(),
-        type: 'message',
-        details: 'Sent manual message',
-        message: message,
-        phone: activeChatPhone,
-        isOutgoing: true
-      };
-      
-      logsList.unshift(tempLog); // add to top of cache
-      
       // Force scroll to bottom by setting flag
       const messagesContainer = document.getElementById('livechat-messages-container');
       if (messagesContainer) {
@@ -984,11 +972,11 @@ async function handleLiveChatSend(e) {
 
       showNotification('ההודעה נשלחה בהצלחה!', 'success');
       
-      // Instantly refresh UI
+      // Fetch latest real data instantly from server (avoids duplicates)
+      await fetchLogs();
+      await fetchContacts();
+      await fetchStatus();
       updateLiveChatUI();
-      
-      // Fetch status in background to update queues
-      fetchStatus();
     }
   } catch (err) {
     console.error('Failed to send manual message:', err);

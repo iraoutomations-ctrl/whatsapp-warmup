@@ -343,22 +343,10 @@ app.post('/api/chat/send', async (req, res) => {
       return res.status(404).json({ error: 'Contact not found in guided contacts' });
     }
 
-    // 1. Send the actual message via Evolution API
+    // 1. Send the actual message via Evolution API (this also logs to DB and updates contact stats)
     await sendMessage(phone, message, true);
 
-    // 2. Add to logs as an outgoing message
-    await db.addLog('message', `Sent manual [MESSAGE]: ${message}`, message, phone, true);
-
-    // 3. Increment stats
-    await db.incrementStat('outgoing');
-
-    // 4. Update contact last interaction
-    await db.updateContact(phone, {
-      lastInteractionAt: new Date().toISOString(),
-      messageCount: contact.messageCount + 1
-    });
-
-    // 5. Override/Clear any queued replies for this contact
+    // 2. Override/Clear any queued replies for this contact
     const settings = db.getSettings();
     let queueChanged = false;
 
@@ -520,7 +508,7 @@ app.delete('/api/contacts/:phone', async (req, res) => {
  * Get system logs
  */
 app.get('/api/logs', (req, res) => {
-  const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+  const limit = req.query.limit ? parseInt(req.query.limit) : 200;
   res.json(db.getLogs(limit));
 });
 

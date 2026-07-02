@@ -513,6 +513,11 @@ body.livechat-mode .content-panel {
   flex-direction: column;
 }
 
+/* Hide top metrics grid in livechat mode so the chat has ample vertical space at 100% zoom */
+body.livechat-mode .metrics-grid {
+  display: none;
+}
+
 .tab-content { display: none; }
 
 .tab-content.active {
@@ -1221,14 +1226,14 @@ textarea {
   border-radius: var(--radius-lg);
   overflow: hidden;
   flex: 1;              /* fills #tab-livechat flex column */
-  min-height: 480px;
+  min-height: 0;
   box-shadow: var(--shadow-card);
 }
 
 @media (max-width: 900px) {
   .livechat-layout {
     grid-template-columns: 1fr;
-    min-height: 500px;
+    min-height: 0;
   }
   .chat-sidebar {
     height: 250px;
