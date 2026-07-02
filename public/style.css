@@ -1371,6 +1371,7 @@ textarea {
   grid-template-rows: auto 1fr auto;
   height: 100%;
   min-height: 0;
+  flex: 1;
 }
 
 .chat-active-header {
@@ -1449,6 +1450,8 @@ textarea {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
 }
 
 /* Chat Footer Form */
