@@ -759,10 +759,12 @@ function updateLiveChatUI() {
   const delayedReplies = systemStatus.delayedReplies || [];
   const nightQueue = systemStatus.nightQueue || [];
 
-  // Sort contacts by last interaction (most recent first)
+  // Sort contacts by most recent MESSAGE timestamp from logsList (live, accurate)
   const contacts = [...contactsList].sort((a, b) => {
-    const timeA = a.lastInteractionAt ? new Date(a.lastInteractionAt).getTime() : 0;
-    const timeB = b.lastInteractionAt ? new Date(b.lastInteractionAt).getTime() : 0;
+    const logsA = logsList.filter(l => l.phone === a.phone && l.type === 'message');
+    const logsB = logsList.filter(l => l.phone === b.phone && l.type === 'message');
+    const timeA = logsA.length > 0 && logsA[0].timestamp ? new Date(logsA[0].timestamp).getTime() : (a.lastInteractionAt ? new Date(a.lastInteractionAt).getTime() : 0);
+    const timeB = logsB.length > 0 && logsB[0].timestamp ? new Date(logsB[0].timestamp).getTime() : (b.lastInteractionAt ? new Date(b.lastInteractionAt).getTime() : 0);
     if (timeA !== timeB) return timeB - timeA;
     return (a.name || '').localeCompare(b.name || '');
   });

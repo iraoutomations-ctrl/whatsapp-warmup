@@ -1246,7 +1246,8 @@ textarea {
   display: flex;
   flex-direction: column;
   background: rgba(0, 0, 0, 0.12);
-  height: 100%;
+  min-height: 0;      /* allow shrinking in grid */
+  overflow: hidden;   /* clip so inner list can scroll */
 }
 
 .sidebar-header {
@@ -1266,6 +1267,7 @@ textarea {
 .chat-list {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;    /* allow shrinking so scroll kicks in */
 }
 
 /* Chat List Item Card */
