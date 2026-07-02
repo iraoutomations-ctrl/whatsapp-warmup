@@ -87,6 +87,11 @@ document.addEventListener('DOMContentLoaded', () => {
   btnPostStatus.addEventListener('click', handlePostStatus);
   btnTestConnection.addEventListener('click', handleTestConnection);
   
+  const btnResetData = document.getElementById('btn-reset-data');
+  if (btnResetData) {
+    btnResetData.addEventListener('click', handleResetData);
+  }
+  
   document.getElementById('btn-clear-logs-ui').addEventListener('click', () => {
     logsListContainer.innerHTML = '<div class="empty-state">תצוגה נוקתה. לוגים חדשים יופיעו בהמשך.</div>';
   });
@@ -698,5 +703,35 @@ async function handleTestConnection() {
   } finally {
     btnTestConnection.disabled = false;
     btnTestConnection.textContent = '🔍 בדיקת התממשקות וחיבור API';
+  }
+}
+
+async function handleResetData() {
+  const btnResetData = document.getElementById('btn-reset-data');
+  if (!confirm('האם אתה בטוח שברצונך לאפס את כל הלוגים, הסטטיסטיקות ותורי ההודעות? פעולה זו תנקה את לוח הבקרה לחלוטין (אך תשמור על הגדרות אנשי הקשר שלך).')) {
+    return;
+  }
+  
+  try {
+    btnResetData.disabled = true;
+    btnResetData.textContent = 'מאפס נתונים... ⏳';
+    
+    const result = await fetchAPI('/api/reset', { method: 'POST' });
+    if (result.success) {
+      showNotification('כל הנתונים, הסטטיסטיקות והתורים אופסו בהצלחה!', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } else {
+      showNotification('איפוס הנתונים נכשל.', 'error');
+    }
+  } catch (err) {
+    console.error('Data reset failed:', err);
+    showNotification(`שגיאה באיפוס הנתונים: ${err.message}`, 'error');
+  } finally {
+    if (btnResetData) {
+      btnResetData.disabled = false;
+      btnResetData.textContent = 'אפס נתוני מערכת 🧹';
+    }
   }
 }

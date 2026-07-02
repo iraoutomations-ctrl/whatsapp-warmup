@@ -292,6 +292,40 @@ app.post('/api/settings', async (req, res) => {
 });
 
 /**
+ * Reset all logs, stats, contact counters, and queues
+ */
+app.post('/api/reset', async (req, res) => {
+  try {
+    // 1. Clear logs
+    db.logs = [];
+    await db._saveFile('logs.json', db.logs);
+
+    // 2. Clear stats
+    db.stats = {};
+    await db._saveFile('stats.json', db.stats);
+
+    // 3. Reset contact counters
+    db.contacts = db.contacts.map(c => ({
+      ...c,
+      messageCount: 0,
+      lastInteractionAt: null
+    }));
+    await db._saveFile('contacts.json', db.contacts);
+
+    // 4. Clear settings queues
+    db.settings.nightQueue = [];
+    db.settings.delayedReplies = [];
+    await db.saveSettings(db.settings);
+
+    await db.addLog('success', 'המערכת אותחלה בהצלחה! כל הנתונים, הסטטיסטיקות והתורים אופסו.');
+
+    res.json({ success: true, message: 'All data successfully reset' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * Trigger a manual WhatsApp status post (image or text)
  */
 app.post('/api/status/trigger', async (req, res) => {
