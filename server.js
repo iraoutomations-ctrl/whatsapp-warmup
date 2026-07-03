@@ -666,7 +666,7 @@ async function startServer() {
 
   const server = app.listen(PORT, () => {
     console.log(`==================================================`);
-    console.log(`🚀 Yozma WhatsApp Warmup Agent is running!`);
+    console.log(`🚀 AutoRI-Studio WhatsApp Warmup Agent is running!`);
     console.log(`🌐 Dashboard: http://localhost:${PORT}`);
     console.log(`📡 Webhook URL: http://your-public-url/webhook`);
     console.log(`==================================================`);

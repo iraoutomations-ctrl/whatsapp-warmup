@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-warmup",
   "version": "1.0.0",
-  "description": "WhatsApp Warmup Agent (Trust Shield) for Yozma",
+  "description": "WhatsApp Warmup Agent (Trust Shield) for AutoRI-Studio",
   "main": "server.js",
   "type": "module",
   "scripts": {
