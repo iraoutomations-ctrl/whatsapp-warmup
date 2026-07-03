@@ -528,15 +528,29 @@ class WarmupScheduler {
           const imagePrompt = await generateImagePrompt(timePeriod);
           console.log(`Generated status image prompt for ${timePeriod}: "${imagePrompt}"`);
           
-          // 2. Fetch the image from Pollinations.ai (free & fast stable diffusion/flux)
-          const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true`;
-          
+          // 2. Fetch the image from Pollinations.ai with retry and browser User-Agent
           await db.addLog('info', `Generating status image via AI (${timePeriod}): "${imagePrompt}"`);
-          const response = await fetch(imageUrl, {
-            signal: AbortSignal.timeout(15000) // 15 seconds timeout
-          });
-          if (!response.ok) {
-            throw new Error(`Failed to generate image from Pollinations: status ${response.status}`);
+          let response = null;
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+              const seed = Math.floor(Math.random() * 1000000);
+              const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true&seed=${seed}&model=flux`;
+              response = await fetch(imageUrl, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                },
+                signal: AbortSignal.timeout(20000)
+              });
+              if (response.ok) break;
+              console.warn(`Pollinations attempt ${attempt} returned status ${response.status}, retrying...`);
+            } catch (e) {
+              console.warn(`Pollinations attempt ${attempt} error: ${e.message}`);
+            }
+            if (attempt === 1) await new Promise(r => setTimeout(r, 1500));
+          }
+          
+          if (!response || !response.ok) {
+            throw new Error(`Failed to generate image from Pollinations: status ${response?.status || 'network error'}`);
           }
           
           const arrayBuffer = await response.arrayBuffer();
