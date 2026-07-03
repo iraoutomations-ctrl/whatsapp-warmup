@@ -372,7 +372,6 @@ export async function sendStatus(type, content, caption = '') {
       type: type,
       content: content,
       media: content,
-      mediaUrl: content,
       fileName: 'status.jpg',
       caption: caption || content,
       text: content,
@@ -390,40 +389,36 @@ export async function sendStatus(type, content, caption = '') {
     }
     
     // 1. Try dedicated /message/sendStatus endpoint
-    let success = false;
     try {
       const res = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload);
-      if (res.success || res.mock) success = true;
+      if (res.success || res.mock) {
+        return true;
+      }
     } catch (err) {
-      console.log(`Endpoint /message/sendStatus failed: ${err.message}`);
+      console.log(`Endpoint /message/sendStatus failed: ${err.message}, trying broadcast fallback...`);
     }
 
-    // 2. ALWAYS also fire direct broadcast endpoint targeting 'status@broadcast'
+    // 2. Fallback to direct broadcast endpoint targeting 'status@broadcast'
     try {
       if (type === 'text') {
         const resBroadcast = await callEvolutionAPI('/message/sendText', 'POST', {
           number: 'status@broadcast',
           text: content
         });
-        if (resBroadcast.success || resBroadcast.mock) success = true;
+        if (resBroadcast.success || resBroadcast.mock) return true;
       } else if (type === 'image') {
         const resBroadcast = await callEvolutionAPI('/message/sendMedia', 'POST', {
           number: 'status@broadcast',
           mediatype: 'image',
           mediaType: 'image',
           media: content,
-          mediaUrl: content,
           fileName: 'status.jpg',
           caption: caption
         });
-        if (resBroadcast.success || resBroadcast.mock) success = true;
+        if (resBroadcast.success || resBroadcast.mock) return true;
       }
     } catch (err2) {
       console.log(`Direct status@broadcast dispatch failed: ${err2.message}`);
-    }
-
-    if (success) {
-      return true;
     }
   } catch (err) {
     console.error('Failed to publish status via sendStatus API:', err.message);
