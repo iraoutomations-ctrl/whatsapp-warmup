@@ -368,78 +368,60 @@ export async function sendStatus(type, content, caption = '') {
       .map(c => c.phone.replace(/[^0-9]/g, ''))
       .filter(p => p.length >= 9);
 
-    const jidList = numericContacts.map(p => `${p}@s.whatsapp.net`);
+    // Primary flat payload (top-level properties required by Evolution API v2)
+    const flatPayload = {
+      type: type,
+      content: content,
+      media: content,
+      fileName: 'status.jpg',
+      caption: caption || content,
+      text: content,
+      message: content,
+      allContacts: true,
+      statusJidList: numericContacts
+    };
 
-    // Official Evolution API schema: { statusMessage: { ... } }
+    if (type === 'text') {
+      flatPayload.backgroundColor = '#128C7E';
+      flatPayload.font = 1;
+    }
+
+    try {
+      const resPrimary = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload);
+      if (resPrimary.success || resPrimary.mock) {
+        return true;
+      }
+    } catch (errPrimary) {
+      console.log(`sendStatus primary flatPayload failed: ${errPrimary.message}`);
+    }
+
+    // Fallback wrapper format if primary fails
     const statusBodyNumeric = {
+      type: type,
       statusMessage: {
         type: type,
         content: content,
         caption: caption || content,
         allContacts: true,
         statusJidList: numericContacts
-      }
-    };
-
-    const statusBodyJid = {
-      statusMessage: {
-        type: type,
-        content: content,
-        caption: caption || content,
-        allContacts: true,
-        statusJidList: jidList
       }
     };
 
     if (type === 'text') {
       statusBodyNumeric.statusMessage.backgroundColor = '#128C7E';
       statusBodyNumeric.statusMessage.font = 1;
-      statusBodyJid.statusMessage.backgroundColor = '#128C7E';
-      statusBodyJid.statusMessage.font = 1;
     }
 
-    let success = false;
-
-    // 1. Send with statusMessage wrapper (numeric array)
     try {
-      const res1 = await callEvolutionAPI('/message/sendStatus', 'POST', statusBodyNumeric);
-      if (res1.success || res1.mock) success = true;
-    } catch (err1) {
-      console.log(`sendStatus statusBodyNumeric failed: ${err1.message}`);
-    }
-
-    // 2. Send with statusMessage wrapper (JID array)
-    try {
-      const res2 = await callEvolutionAPI('/message/sendStatus', 'POST', statusBodyJid);
-      if (res2.success || res2.mock) success = true;
-    } catch (err2) {
-      console.log(`sendStatus statusBodyJid failed: ${err2.message}`);
-    }
-
-    // 3. Send flat payload (v2 fallback)
-    try {
-      const flatPayload = {
-        type: type,
-        content: content,
-        media: content,
-        fileName: 'status.jpg',
-        caption: caption || content,
-        allContacts: true,
-        statusJidList: numericContacts
-      };
-      if (type === 'text') {
-        flatPayload.backgroundColor = '#128C7E';
-        flatPayload.font = 1;
+      const resFallback = await callEvolutionAPI('/message/sendStatus', 'POST', statusBodyNumeric);
+      if (resFallback.success || resFallback.mock) {
+        return true;
       }
-      const res3 = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload);
-      if (res3.success || res3.mock) success = true;
-    } catch (err3) {
-      console.log(`sendStatus flatPayload failed: ${err3.message}`);
+    } catch (errFallback) {
+      console.log(`sendStatus fallback statusBodyNumeric failed: ${errFallback.message}`);
     }
 
-    if (success) {
-      return true;
-    }
+    return false;
   } catch (err) {
     console.error('Failed to publish status via sendStatus API:', err.message);
     await db.addLog('error', `Failed to publish WhatsApp status: ${err.message}`);
