@@ -305,7 +305,7 @@ app.get('/api/status', (req, res) => {
  */
 function requireAdmin(req, res, next) {
   const config = getConfig();
-  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'admin123';
+  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'Liran!192837';
   const providedPin = req.headers['x-admin-pin'] || req.query.pin || req.body?.pin;
   
   if (!providedPin || providedPin !== requiredPin) {
@@ -319,7 +319,7 @@ function requireAdmin(req, res, next) {
  */
 app.post('/api/verify-pin', (req, res) => {
   const config = getConfig();
-  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'admin123';
+  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'Liran!192837';
   const providedPin = req.headers['x-admin-pin'] || req.body?.pin;
   res.json({ success: providedPin === requiredPin });
 });

@@ -27,7 +27,7 @@ export function getConfig() {
     groupsEnabled: dbSettings.groupsEnabled !== false,
     groupReplyLimitPerDay: dbSettings.groupReplyLimitPerDay || 2,
     maxRepliesPerContactPerDay: dbSettings.maxRepliesPerContactPerDay || 4,
-    adminPin: dbSettings.adminPin || process.env.ADMIN_PIN || 'admin123',
+    adminPin: dbSettings.adminPin || process.env.ADMIN_PIN || 'Liran!192837',
     lastStatusPostDate: dbSettings.lastStatusPostDate || '',
     lastStatusPostType: dbSettings.lastStatusPostType || '',
     lastStatusPostCaption: dbSettings.lastStatusPostCaption || '',

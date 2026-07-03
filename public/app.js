@@ -182,7 +182,7 @@ function handleAdminAuth() {
       showNotification('התנתקת בהצלחה. המערכת במצב צפייה לאורחים.', 'info');
     }
   } else {
-    const pin = prompt('🔐 כניסת מנהל למערכת\nהזן את קוד המנהל הסודי (ברירת מחדל: admin123):');
+    const pin = prompt('🔐 כניסת מנהל למערכת\nהזן את קוד המנהל הסודי:');
     if (pin !== null) {
       localStorage.setItem('adminPin', pin);
       checkAdminAuth().then(() => {
