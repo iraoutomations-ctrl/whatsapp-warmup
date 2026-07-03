@@ -148,8 +148,12 @@ class WarmupScheduler {
         throw new Error('Gemini failed to generate starter message');
       }
 
-      await sendMessage(targetContact.phone, message);
-      await db.addLog('success', `Active starter successfully sent to ${targetContact.name}`);
+      const sent = await sendMessage(targetContact.phone, message);
+      if (sent) {
+        await db.addLog('success', `Active starter successfully sent to ${targetContact.name}`);
+      } else {
+        await db.addLog('error', `Active warmup failed to send message to ${targetContact.name} via Evolution API.`);
+      }
     } catch (error) {
       console.error('Active warmup cycle execution failed:', error);
       await db.addLog('error', `Active warmup failed to send message: ${error.message}`);
@@ -414,7 +418,10 @@ class WarmupScheduler {
     }
 
     await db.addLog('info', `Manual Starter Triggered for ${contact.name}`);
-    await sendMessage(contact.phone, message);
+    const sent = await sendMessage(contact.phone, message);
+    if (!sent) {
+      throw new Error(`Evolution API failed to send message to ${contact.phone}`);
+    }
     return message;
   }
 
