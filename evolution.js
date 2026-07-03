@@ -363,15 +363,26 @@ export async function sendStatus(type, content, caption = '') {
   console.log(`Publishing WhatsApp status: type=${type}, caption="${caption}"`);
   
   try {
+    const numericContacts = db.getContacts()
+      .filter(c => c.enabled !== false && c.phone)
+      .map(c => c.phone.replace(/[^0-9]/g, ''))
+      .filter(p => p.length >= 9);
+
     const flatPayload = {
       type: type,
       content: content,
+      media: content,
+      mediaUrl: content,
+      fileName: 'status.jpg',
       caption: caption || content,
       text: content,
       message: content,
-      allContacts: true,
-      statusJidList: ['status@broadcast']
+      allContacts: true
     };
+    
+    if (numericContacts.length > 0) {
+      flatPayload.statusJidList = numericContacts;
+    }
     
     if (type === 'text') {
       flatPayload.backgroundColor = '#128C7E'; // WhatsApp Teal Green
@@ -399,7 +410,10 @@ export async function sendStatus(type, content, caption = '') {
         const resBroadcast = await callEvolutionAPI('/message/sendMedia', 'POST', {
           number: 'status@broadcast',
           mediatype: 'image',
+          mediaType: 'image',
           media: content,
+          mediaUrl: content,
+          fileName: 'status.jpg',
           caption: caption
         });
         if (resBroadcast.success || resBroadcast.mock) success = true;
