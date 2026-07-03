@@ -368,57 +368,77 @@ export async function sendStatus(type, content, caption = '') {
       .map(c => c.phone.replace(/[^0-9]/g, ''))
       .filter(p => p.length >= 9);
 
-    const flatPayload = {
-      type: type,
-      content: content,
-      media: content,
-      fileName: 'status.jpg',
-      caption: caption || content,
-      text: content,
-      message: content,
-      allContacts: true
-    };
-    
-    if (numericContacts.length > 0) {
-      flatPayload.statusJidList = numericContacts;
-    }
-    
-    if (type === 'text') {
-      flatPayload.backgroundColor = '#128C7E'; // WhatsApp Teal Green
-      flatPayload.font = 1;
-    }
-    
-    // 1. Try dedicated /message/sendStatus endpoint
-    try {
-      const res = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload);
-      if (res.success || res.mock) {
-        return true;
+    const jidList = numericContacts.map(p => `${p}@s.whatsapp.net`);
+
+    // Official Evolution API schema: { statusMessage: { ... } }
+    const statusBodyNumeric = {
+      statusMessage: {
+        type: type,
+        content: content,
+        caption: caption || content,
+        allContacts: true,
+        statusJidList: numericContacts
       }
-    } catch (err) {
-      console.log(`Endpoint /message/sendStatus failed: ${err.message}, trying broadcast fallback...`);
+    };
+
+    const statusBodyJid = {
+      statusMessage: {
+        type: type,
+        content: content,
+        caption: caption || content,
+        allContacts: true,
+        statusJidList: jidList
+      }
+    };
+
+    if (type === 'text') {
+      statusBodyNumeric.statusMessage.backgroundColor = '#128C7E';
+      statusBodyNumeric.statusMessage.font = 1;
+      statusBodyJid.statusMessage.backgroundColor = '#128C7E';
+      statusBodyJid.statusMessage.font = 1;
     }
 
-    // 2. Fallback to direct broadcast endpoint targeting 'status@broadcast'
+    let success = false;
+
+    // 1. Send with statusMessage wrapper (numeric array)
     try {
-      if (type === 'text') {
-        const resBroadcast = await callEvolutionAPI('/message/sendText', 'POST', {
-          number: 'status@broadcast',
-          text: content
-        });
-        if (resBroadcast.success || resBroadcast.mock) return true;
-      } else if (type === 'image') {
-        const resBroadcast = await callEvolutionAPI('/message/sendMedia', 'POST', {
-          number: 'status@broadcast',
-          mediatype: 'image',
-          mediaType: 'image',
-          media: content,
-          fileName: 'status.jpg',
-          caption: caption
-        });
-        if (resBroadcast.success || resBroadcast.mock) return true;
-      }
+      const res1 = await callEvolutionAPI('/message/sendStatus', 'POST', statusBodyNumeric);
+      if (res1.success || res1.mock) success = true;
+    } catch (err1) {
+      console.log(`sendStatus statusBodyNumeric failed: ${err1.message}`);
+    }
+
+    // 2. Send with statusMessage wrapper (JID array)
+    try {
+      const res2 = await callEvolutionAPI('/message/sendStatus', 'POST', statusBodyJid);
+      if (res2.success || res2.mock) success = true;
     } catch (err2) {
-      console.log(`Direct status@broadcast dispatch failed: ${err2.message}`);
+      console.log(`sendStatus statusBodyJid failed: ${err2.message}`);
+    }
+
+    // 3. Send flat payload (v2 fallback)
+    try {
+      const flatPayload = {
+        type: type,
+        content: content,
+        media: content,
+        fileName: 'status.jpg',
+        caption: caption || content,
+        allContacts: true,
+        statusJidList: numericContacts
+      };
+      if (type === 'text') {
+        flatPayload.backgroundColor = '#128C7E';
+        flatPayload.font = 1;
+      }
+      const res3 = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload);
+      if (res3.success || res3.mock) success = true;
+    } catch (err3) {
+      console.log(`sendStatus flatPayload failed: ${err3.message}`);
+    }
+
+    if (success) {
+      return true;
     }
   } catch (err) {
     console.error('Failed to publish status via sendStatus API:', err.message);
