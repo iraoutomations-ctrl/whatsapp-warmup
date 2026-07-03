@@ -441,7 +441,7 @@ app.post('/api/chat/send', requireAdmin, async (req, res) => {
 /**
  * Trigger a manual WhatsApp status post (image or text)
  */
-app.post('/api/status/trigger', async (req, res) => {
+app.post('/api/status/trigger', requireAdmin, async (req, res) => {
   try {
     const result = await scheduler.triggerManualStatusPost();
     res.json({ success: true, result });
