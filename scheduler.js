@@ -130,17 +130,17 @@ class WarmupScheduler {
    * - Generates a starter message using Gemini
    * - Sends it
    */
-  async runActiveWarmupCycle() {
+  async runActiveWarmupCycle(excludePhones = []) {
     const config = getConfig();
 
     if (!config.warmupEnabled) {
       console.log('Active warmup cycle skipped: Warmup is currently disabled.');
-      return;
+      return false;
     }
 
     if (config.nightRestEnabled && isNightTime()) {
       console.log('Active warmup loop: Night rest mode active. Skipping active message.');
-      return;
+      return false;
     }
 
     // Check daily message quota
@@ -151,19 +151,23 @@ class WarmupScheduler {
     if (stats.outgoing >= dailyQuota) {
       console.log(`Active warmup cycle skipped: Daily outgoing message quota reached (${stats.outgoing}/${dailyQuota}).`);
       await db.addLog('warning', `Active warmup skipped: Daily quota limit reached (${stats.outgoing}/${dailyQuota}).`);
-      return;
+      return false;
     }
 
-    // Pick a contact (prefer the pre-scheduled target contact)
-    const contacts = db.getContacts().filter(c => c.enabled);
+    // Pick a contact (prefer the pre-scheduled target contact if not excluded)
+    const contacts = db.getContacts().filter(c => c.enabled && !excludePhones.includes(c.phone));
     if (contacts.length === 0) {
-      console.log('Active warmup cycle skipped: No enabled guided contacts in the list.');
-      await db.addLog('warning', 'Active warmup skipped: No enabled contacts found.');
-      return;
+      console.log('Active warmup cycle aborted: No available candidate contacts left.');
+      if (excludePhones.length > 0) {
+        await db.addLog('warning', 'Active warmup cycle aborted: All candidate contacts failed sending.');
+      } else {
+        await db.addLog('warning', 'Active warmup skipped: No enabled contacts found.');
+      }
+      return false;
     }
 
     let targetContact = null;
-    if (config.nextActiveWarmupTargetPhone) {
+    if (config.nextActiveWarmupTargetPhone && excludePhones.length === 0) {
       targetContact = contacts.find(c => c.phone === config.nextActiveWarmupTargetPhone);
     }
 
@@ -192,12 +196,17 @@ class WarmupScheduler {
       const sent = await sendMessage(targetContact.phone, message);
       if (sent) {
         await db.addLog('success', `Active starter successfully sent to ${targetContact.name}`);
+        return true;
       } else {
-        await db.addLog('error', `Active warmup failed to send message to ${targetContact.name} via Evolution API.`);
+        await db.addLog('error', `Active warmup failed to send message to ${targetContact.name} via Evolution API. Retrying next candidate...`);
+        excludePhones.push(targetContact.phone);
+        return await this.runActiveWarmupCycle(excludePhones);
       }
     } catch (error) {
       console.error('Active warmup cycle execution failed:', error);
-      await db.addLog('error', `Active warmup failed to send message: ${error.message}`);
+      await db.addLog('error', `Active warmup failed to send message to ${targetContact.name}: ${error.message}. Retrying next candidate...`);
+      excludePhones.push(targetContact.phone);
+      return await this.runActiveWarmupCycle(excludePhones);
     }
   }
 
