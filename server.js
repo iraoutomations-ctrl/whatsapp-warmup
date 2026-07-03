@@ -150,16 +150,24 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       return res.json({ status: 'success', detail: 'Daily quota reached' });
     }
 
-    // Check per-contact daily conversation depth cap (default max 4 replies per contact per day)
+    // Check per-contact daily conversation depth cap with human variance (-1, 0, +1 around base limit)
     const todayContactLogs = db.getLogs().filter(log =>
       log.phone === phone &&
       (log.type === 'sent' || log.type === 'success') &&
       log.timestamp && log.timestamp.startsWith(todayStr)
     );
-    const maxRepliesPerContact = config.maxRepliesPerContactPerDay || 4;
-    if (todayContactLogs.length >= maxRepliesPerContact) {
-      console.log(`Reached max daily conversation depth (${maxRepliesPerContact}) for ${contact.name || phone}. Stopping replies for today.`);
-      await db.addLog('info', `Daily conversation depth reached (${todayContactLogs.length}/${maxRepliesPerContact}) for ${contact.name || phone}. Leaving read receipt only.`);
+    const baseCap = config.maxRepliesPerContactPerDay || 4;
+    const hashStr = phone + todayStr;
+    let hash = 0;
+    for (let i = 0; i < hashStr.length; i++) {
+      hash = (hash << 5) - hash + hashStr.charCodeAt(i);
+    }
+    const variance = (Math.abs(hash) % 3) - 1; // Returns -1, 0, or +1
+    const dynamicMaxReplies = Math.max(2, baseCap + variance);
+
+    if (todayContactLogs.length >= dynamicMaxReplies) {
+      console.log(`Reached dynamic daily conversation depth (${dynamicMaxReplies}) for ${contact.name || phone}. Stopping replies for today.`);
+      await db.addLog('info', `Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${contact.name || phone}. Leaving read receipt only.`);
       setTimeout(async () => {
         try { await markRead(remoteJid, data.key); } catch (e) {}
       }, 3000);
