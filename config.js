@@ -79,9 +79,23 @@ export function getIsraelTime() {
   };
 }
 
-export function isNightTime() {
+export function isNightTime(targetDate = null) {
   const config = getConfig();
-  const { hour, minute } = getIsraelTime();
+  let hour, minute;
+  if (targetDate) {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jerusalem',
+      hour: 'numeric', minute: 'numeric',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(targetDate);
+    hour = Number(parts.find(p => p.type === 'hour').value);
+    minute = Number(parts.find(p => p.type === 'minute').value);
+  } else {
+    const timeParts = getIsraelTime();
+    hour = timeParts.hour;
+    minute = timeParts.minute;
+  }
   
   const startStr = config.nightRestStart || '23:00';
   const endStr = config.nightRestEnd || '08:00';

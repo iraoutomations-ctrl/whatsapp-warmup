@@ -74,7 +74,21 @@ class WarmupScheduler {
       delayMs = adjustedMinutes * 60 * 1000;
     }
 
-    const nextRunTime = new Date(Date.now() + delayMs);
+    let nextRunTime = new Date(Date.now() + delayMs);
+
+    // If the scheduled time falls inside the night rest period, roll it forward past morning wake up
+    if (config.nightRestEnabled && isNightTime(nextRunTime)) {
+      let guard = 0;
+      while (isNightTime(nextRunTime) && guard < 100) {
+        nextRunTime = new Date(nextRunTime.getTime() + 15 * 60 * 1000);
+        guard++;
+      }
+      // Add a random 5 to 25 minutes offset into the morning
+      const morningOffset = (Math.floor(Math.random() * 21) + 5) * 60 * 1000;
+      nextRunTime = new Date(nextRunTime.getTime() + morningOffset);
+      delayMs = Math.max(1000, nextRunTime.getTime() - Date.now());
+    }
+
     console.log(`Next active warmup starter scheduled for: ${nextRunTime.toLocaleTimeString()}`);
 
     // Pre-calculate target contact for dashboard display
