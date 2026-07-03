@@ -38,6 +38,7 @@ class JSONDatabase {
         week2Limit: 60,
         groupsEnabled: true,
         groupReplyLimitPerDay: 2,
+        maxRepliesPerContactPerDay: 4,
         nextActiveWarmupAt: '',
         nextActiveWarmupTargetPhone: '',
         nextActiveWarmupTargetName: ''

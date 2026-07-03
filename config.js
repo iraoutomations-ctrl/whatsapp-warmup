@@ -26,6 +26,7 @@ export function getConfig() {
     week2Limit: dbSettings.week2Limit || 60,
     groupsEnabled: dbSettings.groupsEnabled !== false,
     groupReplyLimitPerDay: dbSettings.groupReplyLimitPerDay || 2,
+    maxRepliesPerContactPerDay: dbSettings.maxRepliesPerContactPerDay || 4,
     lastStatusPostDate: dbSettings.lastStatusPostDate || '',
     lastStatusPostType: dbSettings.lastStatusPostType || '',
     lastStatusPostCaption: dbSettings.lastStatusPostCaption || '',

@@ -137,6 +137,35 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       return res.json({ status: 'success', detail: 'Read only, warmup disabled' });
     }
 
+    // Check daily quota limit
+    const todayStr = db.getTodayDateString();
+    const stats = db.getStatsForDate(todayStr);
+    const dailyQuota = getDailyQuota();
+    if (stats.outgoing >= dailyQuota) {
+      console.log(`Daily outgoing quota reached (${stats.outgoing}/${dailyQuota}). Leaving read receipt for ${phone} without replying.`);
+      await db.addLog('warning', `Quota limit reached (${stats.outgoing}/${dailyQuota}). Left blue checkmark only for ${contact.name || phone}.`);
+      setTimeout(async () => {
+        try { await markRead(remoteJid, data.key); } catch (e) {}
+      }, 3000);
+      return res.json({ status: 'success', detail: 'Daily quota reached' });
+    }
+
+    // Check per-contact daily conversation depth cap (default max 4 replies per contact per day)
+    const todayContactLogs = db.getLogs().filter(log =>
+      log.phone === phone &&
+      (log.type === 'sent' || log.type === 'success') &&
+      log.timestamp && log.timestamp.startsWith(todayStr)
+    );
+    const maxRepliesPerContact = config.maxRepliesPerContactPerDay || 4;
+    if (todayContactLogs.length >= maxRepliesPerContact) {
+      console.log(`Reached max daily conversation depth (${maxRepliesPerContact}) for ${contact.name || phone}. Stopping replies for today.`);
+      await db.addLog('info', `Daily conversation depth reached (${todayContactLogs.length}/${maxRepliesPerContact}) for ${contact.name || phone}. Leaving read receipt only.`);
+      setTimeout(async () => {
+        try { await markRead(remoteJid, data.key); } catch (e) {}
+      }, 3000);
+      return res.json({ status: 'success', detail: 'Max daily contact depth reached' });
+    }
+
     // Check night rest mode (only if enabled in dashboard settings)
     if (config.nightRestEnabled && isNightTime()) {
       await scheduler.queueNightMessage(phone, messageText, contact.name, data.key, remoteJid);
