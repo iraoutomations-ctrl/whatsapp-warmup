@@ -37,7 +37,10 @@ class JSONDatabase {
         week1Limit: 20,
         week2Limit: 60,
         groupsEnabled: true,
-        groupReplyLimitPerDay: 2
+        groupReplyLimitPerDay: 2,
+        nextActiveWarmupAt: '',
+        nextActiveWarmupTargetPhone: '',
+        nextActiveWarmupTargetName: ''
       });
 
       // Initialize Contacts

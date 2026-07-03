@@ -77,6 +77,26 @@ class WarmupScheduler {
     const nextRunTime = new Date(Date.now() + delayMs);
     console.log(`Next active warmup starter scheduled for: ${nextRunTime.toLocaleTimeString()}`);
 
+    // Pre-calculate target contact for dashboard display
+    const contacts = db.getContacts().filter(c => c.enabled);
+    let nextTarget = null;
+    if (contacts.length > 0) {
+      const sortedContacts = [...contacts].sort((a, b) => {
+        if (!a.lastInteractionAt) return -1;
+        if (!b.lastInteractionAt) return 1;
+        return new Date(a.lastInteractionAt) - new Date(b.lastInteractionAt);
+      });
+      const candidates = sortedContacts.slice(0, Math.min(2, sortedContacts.length));
+      nextTarget = candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    // Save planned schedule and target details to DB settings
+    await db.saveSettings({
+      nextActiveWarmupAt: nextRunTime.toISOString(),
+      nextActiveWarmupTargetPhone: nextTarget ? nextTarget.phone : null,
+      nextActiveWarmupTargetName: nextTarget ? nextTarget.name : null
+    });
+
     this.activeTimeoutId = setTimeout(async () => {
       try {
         await this.runActiveWarmupCycle();
@@ -120,7 +140,7 @@ class WarmupScheduler {
       return;
     }
 
-    // Pick a contact
+    // Pick a contact (prefer the pre-scheduled target contact)
     const contacts = db.getContacts().filter(c => c.enabled);
     if (contacts.length === 0) {
       console.log('Active warmup cycle skipped: No enabled guided contacts in the list.');
@@ -128,16 +148,23 @@ class WarmupScheduler {
       return;
     }
 
-    // Pick contact with the least recent interaction, or random
-    const sortedContacts = [...contacts].sort((a, b) => {
-      if (!a.lastInteractionAt) return -1;
-      if (!b.lastInteractionAt) return 1;
-      return new Date(a.lastInteractionAt) - new Date(b.lastInteractionAt);
-    });
+    let targetContact = null;
+    if (config.nextActiveWarmupTargetPhone) {
+      targetContact = contacts.find(c => c.phone === config.nextActiveWarmupTargetPhone);
+    }
 
-    // To prevent total predictability, we pick from the top 2 least active contacts randomly
-    const candidates = sortedContacts.slice(0, Math.min(2, sortedContacts.length));
-    const targetContact = candidates[Math.floor(Math.random() * candidates.length)];
+    if (!targetContact) {
+      // Pick contact with the least recent interaction, or random
+      const sortedContacts = [...contacts].sort((a, b) => {
+        if (!a.lastInteractionAt) return -1;
+        if (!b.lastInteractionAt) return 1;
+        return new Date(a.lastInteractionAt) - new Date(b.lastInteractionAt);
+      });
+
+      // To prevent total predictability, we pick from the top 2 least active contacts randomly
+      const candidates = sortedContacts.slice(0, Math.min(2, sortedContacts.length));
+      targetContact = candidates[Math.floor(Math.random() * candidates.length)];
+    }
 
     console.log(`Initiating active warmup message to: ${targetContact.name} (${targetContact.phone})`);
     await db.addLog('info', `Active Warmup: Selected ${targetContact.name} (${targetContact.phone}) for starting conversation.`);

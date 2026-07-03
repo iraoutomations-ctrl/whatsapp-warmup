@@ -231,6 +231,25 @@ function updateStatusUI() {
   quotaPercent.textContent = `${Math.round(quotaPercentVal)}%`;
   quotaProgressBar.style.width = `${quotaPercentVal}%`;
 
+  const nextWarmupTimeVal = document.getElementById('next-warmup-time-val');
+  const nextWarmupTargetVal = document.getElementById('next-warmup-target-val');
+  if (nextWarmupTimeVal && nextWarmupTargetVal) {
+    if (config.warmupEnabled && config.nextActiveWarmupAt) {
+      const nextDate = new Date(config.nextActiveWarmupAt);
+      const timeStr = nextDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+      nextWarmupTimeVal.textContent = timeStr;
+      
+      if (config.nextActiveWarmupTargetName && config.nextActiveWarmupTargetPhone) {
+        nextWarmupTargetVal.textContent = `${config.nextActiveWarmupTargetName} (${config.nextActiveWarmupTargetPhone})`;
+      } else {
+        nextWarmupTargetVal.textContent = 'אין (אנשי קשר כבויים)';
+      }
+    } else {
+      nextWarmupTimeVal.textContent = 'מושבת ❌';
+      nextWarmupTargetVal.textContent = 'אין';
+    }
+  }
+
   // 6. Mini stats
   statIncoming.textContent = stats.incoming;
   statOutgoing.textContent = stats.outgoing;
