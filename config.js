@@ -37,7 +37,12 @@ export function getConfig() {
     busySimulationEnabled: dbSettings.busySimulationEnabled !== false,
     busySimulationChance: dbSettings.busySimulationChance !== undefined ? Number(dbSettings.busySimulationChance) : 0.15,
     minBusyDelayMinutes: dbSettings.minBusyDelayMinutes !== undefined ? Number(dbSettings.minBusyDelayMinutes) : 5,
-    maxBusyDelayMinutes: dbSettings.maxBusyDelayMinutes !== undefined ? Number(dbSettings.maxBusyDelayMinutes) : 30
+    maxBusyDelayMinutes: dbSettings.maxBusyDelayMinutes !== undefined ? Number(dbSettings.maxBusyDelayMinutes) : 30,
+    
+    // Scheduled warmup info
+    nextActiveWarmupAt: dbSettings.nextActiveWarmupAt || '',
+    nextActiveWarmupTargetPhone: dbSettings.nextActiveWarmupTargetPhone || '',
+    nextActiveWarmupTargetName: dbSettings.nextActiveWarmupTargetName || ''
   };
 }
 
