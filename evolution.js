@@ -363,21 +363,7 @@ export async function sendStatus(type, content, caption = '') {
   console.log(`Publishing WhatsApp status: type=${type}, caption="${caption}"`);
   
   try {
-    const payload = {
-      statusMessage: {
-        type: type,
-        content: content,
-        caption: caption,
-        allContacts: true
-      }
-    };
-    
-    // Text status requires background color and font style
-    if (type === 'text') {
-      payload.statusMessage.backgroundColor = '#128C7E'; // WhatsApp Teal Green
-      payload.statusMessage.font = 1;
-    }
-    
+    // Standard Evolution API v2 flat payload
     const flatPayload = {
       type: type,
       content: content,
@@ -386,17 +372,47 @@ export async function sendStatus(type, content, caption = '') {
     };
     
     if (type === 'text') {
-      flatPayload.backgroundColor = '#128C7E';
+      flatPayload.backgroundColor = '#128C7E'; // WhatsApp Teal Green
       flatPayload.font = 1;
     }
     
+    const wrappedPayload = {
+      statusMessage: { ...flatPayload }
+    };
+    
     try {
-      const result = await callEvolutionAPI('/message/sendStatus', 'POST', payload, true);
-      return result.success || result.mock;
-    } catch (err) {
-      console.log(`Wrapped sendStatus failed: ${err.message}, trying flat format...`);
       const result = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload, true);
-      return result.success || result.mock;
+      if (result.success || result.mock) {
+        return true;
+      }
+    } catch (err) {
+      console.log(`Flat sendStatus failed: ${err.message}, trying wrapped statusMessage format...`);
+    }
+
+    try {
+      const resultWrapped = await callEvolutionAPI('/message/sendStatus', 'POST', wrappedPayload, true);
+      if (resultWrapped.success || resultWrapped.mock) {
+        return true;
+      }
+    } catch (err2) {
+      console.log(`Wrapped sendStatus failed: ${err2.message}, trying direct status@broadcast...`);
+    }
+
+    // Direct status@broadcast fallback
+    if (type === 'text') {
+      const resultBroadcast = await callEvolutionAPI('/message/sendText', 'POST', {
+        number: 'status@broadcast',
+        text: content
+      }, true);
+      return resultBroadcast.success || resultBroadcast.mock;
+    } else if (type === 'image') {
+      const resultBroadcast = await callEvolutionAPI('/message/sendMedia', 'POST', {
+        number: 'status@broadcast',
+        mediatype: 'image',
+        media: content,
+        caption: caption
+      }, true);
+      return resultBroadcast.success || resultBroadcast.mock;
     }
   } catch (err) {
     console.error('Failed to publish status via sendStatus API:', err.message);
