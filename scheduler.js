@@ -534,12 +534,12 @@ class WarmupScheduler {
           for (let attempt = 1; attempt <= 2; attempt++) {
             try {
               const seed = Math.floor(Math.random() * 1000000);
-              const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true&seed=${seed}&model=flux`;
+              const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=600&height=1000&nologo=true&seed=${seed}&model=turbo`;
               response = await fetch(imageUrl, {
                 headers: {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
                 },
-                signal: AbortSignal.timeout(20000)
+                signal: AbortSignal.timeout(25000)
               });
               if (response.ok) break;
               console.warn(`Pollinations attempt ${attempt} returned status ${response.status}, retrying...`);
