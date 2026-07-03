@@ -301,9 +301,33 @@ app.get('/api/status', (req, res) => {
 });
 
 /**
+ * Middleware to verify Admin PIN for state mutating actions
+ */
+function requireAdmin(req, res, next) {
+  const config = getConfig();
+  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'admin123';
+  const providedPin = req.headers['x-admin-pin'] || req.query.pin || req.body?.pin;
+  
+  if (!providedPin || providedPin !== requiredPin) {
+    return res.status(403).json({ error: 'Unauthorized: Admin PIN required to perform this action.' });
+  }
+  next();
+}
+
+/**
+ * Verify if provided PIN matches adminPin
+ */
+app.post('/api/verify-pin', (req, res) => {
+  const config = getConfig();
+  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'admin123';
+  const providedPin = req.headers['x-admin-pin'] || req.body?.pin;
+  res.json({ success: providedPin === requiredPin });
+});
+
+/**
  * Save configuration settings
  */
-app.post('/api/settings', async (req, res) => {
+app.post('/api/settings', requireAdmin, async (req, res) => {
   try {
     const oldSettings = db.getSettings();
     const updated = await db.saveSettings(req.body);
@@ -320,7 +344,6 @@ app.post('/api/settings', async (req, res) => {
     // If busy simulation was toggled OFF, immediately process all queued delayed replies
     if (req.body.busySimulationEnabled === false && oldSettings.busySimulationEnabled !== false) {
       console.log('Busy simulation toggled OFF. Immediately processing all delayed replies...');
-      // Run asynchronously in the background
       scheduler.processDelayedReplies();
     }
 
@@ -334,7 +357,7 @@ app.post('/api/settings', async (req, res) => {
 /**
  * Reset all logs, stats, contact counters, and queues
  */
-app.post('/api/reset', async (req, res) => {
+app.post('/api/reset', requireAdmin, async (req, res) => {
   try {
     // 1. Clear logs
     db.logs = [];
@@ -368,7 +391,7 @@ app.post('/api/reset', async (req, res) => {
 /**
  * Send a manual WhatsApp message to a guided contact and override any queued bot replies
  */
-app.post('/api/chat/send', async (req, res) => {
+app.post('/api/chat/send', requireAdmin, async (req, res) => {
   try {
     const { phone, message } = req.body;
     if (!phone || !message) {
@@ -498,7 +521,7 @@ app.get('/api/contacts', (req, res) => {
 /**
  * Add a new guided contact
  */
-app.post('/api/contacts', async (req, res) => {
+app.post('/api/contacts', requireAdmin, async (req, res) => {
   try {
     const { phone, name, notes, enabled } = req.body;
     if (!phone) {
@@ -519,7 +542,7 @@ app.post('/api/contacts', async (req, res) => {
 /**
  * Update contact configuration (toggle enable/notes)
  */
-app.put('/api/contacts/:phone', async (req, res) => {
+app.put('/api/contacts/:phone', requireAdmin, async (req, res) => {
   try {
     const updated = await db.updateContact(req.params.phone, req.body);
     res.json({ success: true, contact: updated });
@@ -531,7 +554,7 @@ app.put('/api/contacts/:phone', async (req, res) => {
 /**
  * Delete a contact
  */
-app.delete('/api/contacts/:phone', async (req, res) => {
+app.delete('/api/contacts/:phone', requireAdmin, async (req, res) => {
   try {
     const removed = await db.deleteContact(req.params.phone);
     await db.addLog('warning', `Deleted contact: ${removed.name} (${req.params.phone})`);
@@ -550,9 +573,22 @@ app.get('/api/logs', (req, res) => {
 });
 
 /**
+ * Clear system logs
+ */
+app.post('/api/logs/clear', requireAdmin, async (req, res) => {
+  try {
+    db.logs = [];
+    await db._saveFile('logs.json', db.logs);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * Trigger manual active starter
  */
-app.post('/api/test/starter', async (req, res) => {
+app.post('/api/test/starter', requireAdmin, async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone) {
@@ -568,9 +604,8 @@ app.post('/api/test/starter', async (req, res) => {
 
 /**
  * Simulator Endpoint: Mock an incoming message from a contact/group.
- * Useful for validating response logic offline.
  */
-app.post('/api/test/incoming', async (req, res) => {
+app.post('/api/test/incoming', requireAdmin, async (req, res) => {
   try {
     const { phone, message, isGroup, senderName } = req.body;
     

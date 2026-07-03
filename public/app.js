@@ -1,28 +1,36 @@
 // API Helper Functions
 async function fetchAPI(endpoint, options = {}) {
   try {
+    const adminPin = localStorage.getItem('adminPin') || '';
     const response = await fetch(endpoint, {
+      ...options,
       headers: {
         'Content-Type': 'application/json',
+        'x-admin-pin': adminPin,
         ...options.headers
-      },
-      ...options
+      }
     });
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      if (response.status === 403) {
+        showNotification('שגיאת הרשאה: נדרשת התחברות עם קוד מנהל לבצע פעולה זו (לחץ על כפתור כניסת מנהל בכותרת)', 'error');
+      }
       throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
     
     return await response.json();
   } catch (error) {
     console.error(`API Call failed to ${endpoint}:`, error);
-    showNotification(error.message, 'error');
+    if (!error.message.includes('שגיאת הרשאה')) {
+      showNotification(error.message, 'error');
+    }
     throw error;
   }
 }
 
 // Global State
+let isAdmin = false;
 let contactsList = [];
 let logsList = [];
 let systemStatus = {};
@@ -73,6 +81,7 @@ const phoneChatHistory = document.getElementById('phone-chat-history');
 // Initial Load
 document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
+  checkAdminAuth();
   loadData();
   
   // Start Polling Stats & Logs every 5 seconds for real-time dashboard updates
@@ -141,6 +150,96 @@ function setupTabs() {
   });
 }
 
+// Admin / Guest Auth logic
+async function checkAdminAuth() {
+  const pin = localStorage.getItem('adminPin') || '';
+  if (!pin) {
+    isAdmin = false;
+    updateAdminUI();
+    return;
+  }
+  try {
+    const res = await fetch('/api/verify-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
+      body: JSON.stringify({ pin })
+    });
+    const data = await res.json();
+    isAdmin = !!data.success;
+    if (!isAdmin) localStorage.removeItem('adminPin');
+  } catch (e) {
+    isAdmin = false;
+  }
+  updateAdminUI();
+}
+
+function handleAdminAuth() {
+  if (isAdmin) {
+    if (confirm('האם ברצונך להתנתק ממצב מנהל ולעבור למצב צפייה בלבד (אורח)?')) {
+      localStorage.removeItem('adminPin');
+      isAdmin = false;
+      updateAdminUI();
+      showNotification('התנתקת בהצלחה. המערכת במצב צפייה לאורחים.', 'info');
+    }
+  } else {
+    const pin = prompt('🔐 כניסת מנהל למערכת\nהזן את קוד המנהל הסודי (ברירת מחדל: admin123):');
+    if (pin !== null) {
+      localStorage.setItem('adminPin', pin);
+      checkAdminAuth().then(() => {
+        if (isAdmin) {
+          showNotification('התחברת כמנהל בהצלחה! כל אפשרויות השליטה נפתחו.', 'success');
+        } else {
+          showNotification('קוד מנהל שגוי. נשארת במצב צפייה לאורחים.', 'error');
+        }
+      });
+    }
+  }
+}
+
+function updateAdminUI() {
+  const adminPill = document.getElementById('admin-status-pill');
+  const adminIcon = document.getElementById('admin-icon');
+  const adminLabel = document.getElementById('admin-label');
+  const settingsTabBtn = document.querySelector('.tab-btn[data-tab="settings"]');
+  const addContactBtn = document.getElementById('btn-open-add-contact-modal');
+  const triggerStoryBtn = document.getElementById('btn-post-status');
+  const resetBtn = document.getElementById('btn-reset-data');
+  const livechatForm = document.getElementById('livechat-send-form');
+
+  if (isAdmin) {
+    if (adminIcon) adminIcon.textContent = '🔓';
+    if (adminLabel) adminLabel.textContent = 'מנהל מחובר (התנתק)';
+    if (adminPill) {
+      adminPill.style.background = 'rgba(16, 185, 129, 0.2)';
+      adminPill.style.borderColor = '#10b981';
+    }
+    if (settingsTabBtn) settingsTabBtn.style.display = '';
+    if (addContactBtn) addContactBtn.style.display = '';
+    if (triggerStoryBtn) triggerStoryBtn.style.display = '';
+    if (resetBtn) resetBtn.style.display = '';
+    if (livechatForm) livechatForm.style.display = '';
+    document.querySelectorAll('.delete-btn, .contact-toggle').forEach(el => el.style.display = '');
+  } else {
+    if (adminIcon) adminIcon.textContent = '👁️';
+    if (adminLabel) adminLabel.textContent = 'אורח (צפייה בלבד) - כניסת מנהל';
+    if (adminPill) {
+      adminPill.style.background = 'rgba(0, 240, 255, 0.1)';
+      adminPill.style.borderColor = 'var(--cyan)';
+    }
+    if (settingsTabBtn) {
+      settingsTabBtn.style.display = 'none';
+      if (settingsTabBtn.classList.contains('active')) {
+        document.querySelector('.tab-btn[data-tab="overview"]')?.click();
+      }
+    }
+    if (addContactBtn) addContactBtn.style.display = 'none';
+    if (triggerStoryBtn) triggerStoryBtn.style.display = 'none';
+    if (resetBtn) resetBtn.style.display = 'none';
+    if (livechatForm) livechatForm.style.display = 'none';
+    document.querySelectorAll('.delete-btn, .contact-toggle').forEach(el => el.style.display = 'none');
+  }
+}
+
 // Load status, contacts, and logs
 async function loadData() {
   await Promise.all([
@@ -149,6 +248,7 @@ async function loadData() {
     fetchLogs()
   ]);
   updateLiveChatUI();
+  updateAdminUI();
 }
 
 // Staggered Polling
@@ -158,6 +258,7 @@ async function pollRealtimeData() {
     await fetchContacts();
     await fetchLogs();
     updateLiveChatUI();
+    updateAdminUI();
   } catch (err) {
     console.error('Polling failed:', err);
   }
