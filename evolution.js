@@ -363,12 +363,14 @@ export async function sendStatus(type, content, caption = '') {
   console.log(`Publishing WhatsApp status: type=${type}, caption="${caption}"`);
   
   try {
-    // Standard Evolution API v2 flat payload
     const flatPayload = {
       type: type,
       content: content,
-      caption: caption,
-      allContacts: true
+      caption: caption || content,
+      text: content,
+      message: content,
+      allContacts: true,
+      statusJidList: ['status@broadcast']
     };
     
     if (type === 'text') {
@@ -376,43 +378,38 @@ export async function sendStatus(type, content, caption = '') {
       flatPayload.font = 1;
     }
     
-    const wrappedPayload = {
-      statusMessage: { ...flatPayload }
-    };
-    
+    // 1. Try dedicated /message/sendStatus endpoint
+    let success = false;
     try {
-      const result = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload, true);
-      if (result.success || result.mock) {
-        return true;
-      }
+      const res = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload);
+      if (res.success || res.mock) success = true;
     } catch (err) {
-      console.log(`Flat sendStatus failed: ${err.message}, trying wrapped statusMessage format...`);
+      console.log(`Endpoint /message/sendStatus failed: ${err.message}`);
     }
 
+    // 2. ALWAYS also fire direct broadcast endpoint targeting 'status@broadcast'
     try {
-      const resultWrapped = await callEvolutionAPI('/message/sendStatus', 'POST', wrappedPayload, true);
-      if (resultWrapped.success || resultWrapped.mock) {
-        return true;
+      if (type === 'text') {
+        const resBroadcast = await callEvolutionAPI('/message/sendText', 'POST', {
+          number: 'status@broadcast',
+          text: content
+        });
+        if (resBroadcast.success || resBroadcast.mock) success = true;
+      } else if (type === 'image') {
+        const resBroadcast = await callEvolutionAPI('/message/sendMedia', 'POST', {
+          number: 'status@broadcast',
+          mediatype: 'image',
+          media: content,
+          caption: caption
+        });
+        if (resBroadcast.success || resBroadcast.mock) success = true;
       }
     } catch (err2) {
-      console.log(`Wrapped sendStatus failed: ${err2.message}, trying direct status@broadcast...`);
+      console.log(`Direct status@broadcast dispatch failed: ${err2.message}`);
     }
 
-    // Direct status@broadcast fallback
-    if (type === 'text') {
-      const resultBroadcast = await callEvolutionAPI('/message/sendText', 'POST', {
-        number: 'status@broadcast',
-        text: content
-      }, true);
-      return resultBroadcast.success || resultBroadcast.mock;
-    } else if (type === 'image') {
-      const resultBroadcast = await callEvolutionAPI('/message/sendMedia', 'POST', {
-        number: 'status@broadcast',
-        mediatype: 'image',
-        media: content,
-        caption: caption
-      }, true);
-      return resultBroadcast.success || resultBroadcast.mock;
+    if (success) {
+      return true;
     }
   } catch (err) {
     console.error('Failed to publish status via sendStatus API:', err.message);
