@@ -1231,17 +1231,27 @@ textarea {
 }
 
 @media (max-width: 900px) {
+  body.livechat-mode,
+  body.livechat-mode .app-container,
+  body.livechat-mode .content-panel {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body.livechat-mode .main-header {
+    display: none !important;
+  }
   .livechat-layout {
     grid-template-columns: 1fr;
-    min-height: 0;
+    min-height: 650px;
+    height: auto;
   }
   .chat-sidebar {
-    height: 250px;
+    height: 220px;
     border-bottom: 1px solid var(--border-subtle);
     border-left: none !important;
   }
   .chat-main-view {
-    height: 450px;
+    height: 500px;
   }
 }
 

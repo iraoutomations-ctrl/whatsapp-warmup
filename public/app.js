@@ -146,6 +146,16 @@ function setupTabs() {
       } else {
         document.body.classList.remove('livechat-mode');
       }
+
+      // On mobile screens, automatically scroll down so the user immediately sees the active tab content
+      if (window.innerWidth <= 900) {
+        setTimeout(() => {
+          const targetEl = document.querySelector('.nav-tabs');
+          if (targetEl) {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 80);
+      }
     });
   });
 }
