@@ -129,6 +129,7 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       console.log(`Warmup is disabled. Read receipt will be sent to ${phone} after delay, but reply skipped.`);
       setTimeout(async () => {
         try {
+          await sendTypingState(phone, 'available', 1500);
           await markRead(remoteJid, data.key);
         } catch (e) {
           console.error('Failed to mark read in disabled mode:', e);
@@ -145,7 +146,10 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       console.log(`Daily outgoing quota reached (${stats.outgoing}/${dailyQuota}). Leaving read receipt for ${phone} without replying.`);
       await db.addLog('warning', `Quota limit reached (${stats.outgoing}/${dailyQuota}). Left blue checkmark only for ${contact.name || phone}.`);
       setTimeout(async () => {
-        try { await markRead(remoteJid, data.key); } catch (e) {}
+        try {
+          await sendTypingState(phone, 'available', 1500);
+          await markRead(remoteJid, data.key);
+        } catch (e) {}
       }, 3000);
       return res.json({ status: 'success', detail: 'Daily quota reached' });
     }
@@ -169,7 +173,10 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       console.log(`Reached dynamic daily conversation depth (${dynamicMaxReplies}) for ${contact.name || phone}. Stopping replies for today.`);
       await db.addLog('info', `Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${contact.name || phone}. Leaving read receipt only.`);
       setTimeout(async () => {
-        try { await markRead(remoteJid, data.key); } catch (e) {}
+        try {
+          await sendTypingState(phone, 'available', 1500);
+          await markRead(remoteJid, data.key);
+        } catch (e) {}
       }, 3000);
       return res.json({ status: 'success', detail: 'Max daily contact depth reached' });
     }
