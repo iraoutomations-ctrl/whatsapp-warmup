@@ -417,6 +417,8 @@ function updateStatusUI() {
     
     document.getElementById('setting-limit-w1').value = config.week1Limit;
     document.getElementById('setting-limit-w2').value = config.week2Limit;
+    document.getElementById('setting-max-replies').value = config.maxRepliesPerContactPerDay || 4;
+    document.getElementById('setting-max-silent').value = config.maxSilentReadsPerDay || 4;
     
     document.getElementById('setting-groups-enabled').checked = config.groupsEnabled;
     document.getElementById('setting-group-limit').value = config.groupReplyLimitPerDay;
@@ -569,6 +571,8 @@ async function handleSaveSettings(e) {
     
     week1Limit: parseInt(document.getElementById('setting-limit-w1').value),
     week2Limit: parseInt(document.getElementById('setting-limit-w2').value),
+    maxRepliesPerContactPerDay: parseInt(document.getElementById('setting-max-replies').value) || 4,
+    maxSilentReadsPerDay: parseInt(document.getElementById('setting-max-silent').value) || 4,
     
     groupsEnabled: document.getElementById('setting-groups-enabled').checked,
     groupReplyLimitPerDay: parseInt(document.getElementById('setting-group-limit').value)

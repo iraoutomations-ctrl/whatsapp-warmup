@@ -39,6 +39,7 @@ class JSONDatabase {
         groupsEnabled: true,
         groupReplyLimitPerDay: 2,
         maxRepliesPerContactPerDay: 4,
+        maxSilentReadsPerDay: 4,
         adminPin: process.env.ADMIN_PIN || 'Liran!192837',
         nextActiveWarmupAt: '',
         nextActiveWarmupTargetPhone: '',
