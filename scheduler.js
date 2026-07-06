@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import db from './database.js';
 import { getConfig, isNightTime, isWeekend, getDailyQuota, getIsraelTime } from './config.js';
+import { generateStarter, generateReply, generateStatusText, generateStatusCaption, generateImagePrompt } from './gemini.js';
 import { sendMessage, sendStatusText, sendStatusImage, sendStatus, markRead, sendReaction, sendTypingState, handleLimitStop } from './evolution.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

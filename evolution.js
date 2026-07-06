@@ -64,7 +64,6 @@ export async function sendTypingState(number, presence = 'composing', delayMs = 
       delay: delayMs
     }, true); // throwError = true
   } catch (err) {
-    console.log(`v2 sendPresence failed: ${err.message}, trying updatePresence...`);
     try {
       await callEvolutionAPI('/chat/updatePresence', 'POST', {
         number: cleanNumber,
@@ -72,7 +71,6 @@ export async function sendTypingState(number, presence = 'composing', delayMs = 
         delay: delayMs
       }, true); // throwError = true
     } catch (updateErr) {
-      console.log(`updatePresence failed: ${updateErr.message}, trying v1 retrievingPresence...`);
       try {
         await callEvolutionAPI('/chat/retrievingPresence', 'POST', {
           number: cleanNumber,
@@ -80,7 +78,7 @@ export async function sendTypingState(number, presence = 'composing', delayMs = 
           presence: presence
         }, true); // throwError = true
       } catch (v1Err) {
-        console.warn('Failed to set typing presence via all fallbacks:', v1Err.message);
+        // Silently ignore presence fallback failures to keep logs clean
       }
     }
   }
@@ -239,7 +237,7 @@ export async function markRead(remoteJid, msgKey = null) {
       }, true); // throwError = true
       return result.success || result.mock;
     } catch (err) {
-      console.log(`v2 markMessageAsRead failed: ${err.message}, trying other fallbacks...`);
+      // Try next fallback silently
     }
   }
 
@@ -250,7 +248,6 @@ export async function markRead(remoteJid, msgKey = null) {
     }, true); // throwError = true
     return result.success || result.mock;
   } catch (err) {
-    console.log(`v2 readMessages failed: ${err.message}, trying v1 markRead...`);
     try {
       const payload = {
         read: true,
@@ -259,7 +256,7 @@ export async function markRead(remoteJid, msgKey = null) {
       const result = await callEvolutionAPI('/chat/markRead', 'POST', payload, true);
       return result.success || result.mock;
     } catch (v1Err) {
-      console.warn('Failed to send read receipt via fallback:', v1Err.message);
+      // Silently ignore read receipt fallback failures to keep logs clean
     }
   }
   return false;
