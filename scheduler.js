@@ -262,21 +262,14 @@ class WarmupScheduler {
     // Process asynchronously to stagger and not block loop execution
     setTimeout(async () => {
       try {
-        // 1. Go Online (available)
-        await sendTypingState(item.phone, 'available', 1500);
-
-        // 2. Mark Read (V כחול)
-        if (item.remoteJid && item.msgKey) {
-          await markRead(item.remoteJid, item.msgKey);
-        }
-
-        // Check quota and depth limits before proceeding with reply
+        // Check quota and depth limits before marking read or replying (leave unread if stopped!)
         const todayStr = db.getTodayDateString();
         const stats = db.getStatsForDate(todayStr);
         const dailyQuota = getDailyQuota();
-        if (stats.outgoing >= dailyQuota) {
-          console.log(`Night queue reply skipped for ${item.phone}: Daily outgoing quota reached (${stats.outgoing}/${dailyQuota}).`);
-          await db.addLog('warning', `Overnight reply skipped: Daily quota limit reached (${stats.outgoing}/${dailyQuota}).`);
+        const emergencyQuota = Math.floor(dailyQuota * 1.5);
+        if (stats.outgoing >= emergencyQuota) {
+          console.log(`Night queue reply skipped for ${item.phone}: Emergency outgoing quota reached (${stats.outgoing}/${emergencyQuota}).`);
+          await db.addLog('warning', `Overnight reply skipped: Emergency quota limit reached (${stats.outgoing}/${emergencyQuota}). Left unread.`);
           return;
         }
 
@@ -296,8 +289,16 @@ class WarmupScheduler {
 
         if (todayContactLogs.length >= dynamicMaxReplies) {
           console.log(`Night queue reply skipped for ${item.phone}: Reached dynamic daily conversation depth (${dynamicMaxReplies}).`);
-          await db.addLog('info', `Overnight reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${item.contactName || item.phone}.`);
+          await db.addLog('info', `Overnight reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${item.contactName || item.phone}. Left unread.`);
           return;
+        }
+
+        // 1. Go Online (available)
+        await sendTypingState(item.phone, 'available', 1500);
+
+        // 2. Mark Read (V כחול)
+        if (item.remoteJid && item.msgKey) {
+          await markRead(item.remoteJid, item.msgKey);
         }
 
         // 3. Stagger delay (simulate reading: 1.5 seconds)
@@ -397,19 +398,14 @@ class WarmupScheduler {
           try {
             await db.addLog('info', `Starting delayed reply sequence for ${reply.phone}`);
 
-            // 1. Go Online (available)
-            await sendTypingState(reply.phone, 'available', 1500);
-
-            // 2. Mark Read (V כחול)
-            await markRead(reply.remoteJid, reply.msgKey);
-
-            // Check quota and depth limits before proceeding with reply
+            // Check quota and depth limits before marking read or replying (leave unread if stopped!)
             const todayStr = db.getTodayDateString();
             const stats = db.getStatsForDate(todayStr);
             const dailyQuota = getDailyQuota();
-            if (stats.outgoing >= dailyQuota) {
-              console.log(`Delayed reply skipped for ${reply.phone}: Daily outgoing quota reached (${stats.outgoing}/${dailyQuota}).`);
-              await db.addLog('warning', `Delayed reply skipped: Daily quota limit reached (${stats.outgoing}/${dailyQuota}).`);
+            const emergencyQuota = Math.floor(dailyQuota * 1.5);
+            if (stats.outgoing >= emergencyQuota) {
+              console.log(`Delayed reply skipped for ${reply.phone}: Emergency outgoing quota reached (${stats.outgoing}/${emergencyQuota}).`);
+              await db.addLog('warning', `Delayed reply skipped: Emergency quota limit reached (${stats.outgoing}/${emergencyQuota}). Left unread.`);
               return;
             }
 
@@ -429,9 +425,15 @@ class WarmupScheduler {
 
             if (todayContactLogs.length >= dynamicMaxReplies) {
               console.log(`Delayed reply skipped for ${reply.phone}: Reached dynamic daily conversation depth (${dynamicMaxReplies}).`);
-              await db.addLog('info', `Delayed reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${reply.contactName || reply.phone}.`);
+              await db.addLog('info', `Delayed reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${reply.contactName || reply.phone}. Left unread.`);
               return;
             }
+
+            // 1. Go Online (available)
+            await sendTypingState(reply.phone, 'available', 1500);
+
+            // 2. Mark Read (V כחול)
+            await markRead(reply.remoteJid, reply.msgKey);
 
             // 3. Stagger delay (simulate reading: 1.5 seconds)
             await new Promise(resolve => setTimeout(resolve, 1500));

@@ -138,20 +138,16 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
       return res.json({ status: 'success', detail: 'Read only, warmup disabled' });
     }
 
-    // Check daily quota limit
+    // Check emergency hard ceiling for incoming replies (1.5x daily quota)
+    // Regular dailyQuota stops active warmup initiations in scheduler, but we allow replying to existing conversations up to 1.5x quota!
     const todayStr = db.getTodayDateString();
     const stats = db.getStatsForDate(todayStr);
     const dailyQuota = getDailyQuota();
-    if (stats.outgoing >= dailyQuota) {
-      console.log(`Daily outgoing quota reached (${stats.outgoing}/${dailyQuota}). Leaving read receipt for ${phone} without replying.`);
-      await db.addLog('warning', `Quota limit reached (${stats.outgoing}/${dailyQuota}). Left blue checkmark only for ${contact.name || phone}.`);
-      setTimeout(async () => {
-        try {
-          await sendTypingState(phone, 'available', 1500);
-          await markRead(remoteJid, data.key);
-        } catch (e) {}
-      }, 3000);
-      return res.json({ status: 'success', detail: 'Daily quota reached' });
+    const emergencyQuota = Math.floor(dailyQuota * 1.5);
+    if (stats.outgoing >= emergencyQuota) {
+      console.log(`Emergency outgoing quota reached (${stats.outgoing}/${emergencyQuota}). Leaving message from ${phone} unread without replying.`);
+      await db.addLog('warning', `Emergency quota reached (${stats.outgoing}/${emergencyQuota}). Left message unread (no blue checkmark) for ${contact.name || phone}.`);
+      return res.json({ status: 'success', detail: 'Emergency quota reached (left unread)' });
     }
 
     // Check per-contact daily conversation depth cap with human variance (-1, 0, +1 around base limit)
@@ -170,15 +166,9 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     const dynamicMaxReplies = Math.max(2, baseCap + variance);
 
     if (todayContactLogs.length >= dynamicMaxReplies) {
-      console.log(`Reached dynamic daily conversation depth (${dynamicMaxReplies}) for ${contact.name || phone}. Stopping replies for today.`);
-      await db.addLog('info', `Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${contact.name || phone}. Leaving read receipt only.`);
-      setTimeout(async () => {
-        try {
-          await sendTypingState(phone, 'available', 1500);
-          await markRead(remoteJid, data.key);
-        } catch (e) {}
-      }, 3000);
-      return res.json({ status: 'success', detail: 'Max daily contact depth reached' });
+      console.log(`Reached dynamic daily conversation depth (${dynamicMaxReplies}) for ${contact.name || phone}. Stopping replies and leaving unread for today.`);
+      await db.addLog('info', `Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${contact.name || phone}. Left message unread (no blue checkmark).`);
+      return res.json({ status: 'success', detail: 'Max daily contact depth reached (left unread)' });
     }
 
     // Check night rest mode (only if enabled in dashboard settings)
