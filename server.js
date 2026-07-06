@@ -157,7 +157,7 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     // Check per-contact daily conversation depth cap with human variance (-1, 0, +1 around base limit)
     const todayContactLogs = db.getLogs().filter(log =>
       log.phone === phone &&
-      (log.type === 'sent' || log.type === 'success') &&
+      (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
       log.timestamp && log.timestamp.startsWith(todayStr)
     );
     const baseCap = config.maxRepliesPerContactPerDay || 4;

@@ -270,6 +270,36 @@ class WarmupScheduler {
           await markRead(item.remoteJid, item.msgKey);
         }
 
+        // Check quota and depth limits before proceeding with reply
+        const todayStr = db.getTodayDateString();
+        const stats = db.getStatsForDate(todayStr);
+        const dailyQuota = getDailyQuota();
+        if (stats.outgoing >= dailyQuota) {
+          console.log(`Night queue reply skipped for ${item.phone}: Daily outgoing quota reached (${stats.outgoing}/${dailyQuota}).`);
+          await db.addLog('warning', `Overnight reply skipped: Daily quota limit reached (${stats.outgoing}/${dailyQuota}).`);
+          return;
+        }
+
+        const todayContactLogs = db.getLogs().filter(log =>
+          log.phone === item.phone &&
+          (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
+          log.timestamp && log.timestamp.startsWith(todayStr)
+        );
+        const baseCap = config.maxRepliesPerContactPerDay || 4;
+        const hashStr = item.phone + todayStr;
+        let hash = 0;
+        for (let i = 0; i < hashStr.length; i++) {
+          hash = (hash << 5) - hash + hashStr.charCodeAt(i);
+        }
+        const variance = (Math.abs(hash) % 3) - 1;
+        const dynamicMaxReplies = Math.max(2, baseCap + variance);
+
+        if (todayContactLogs.length >= dynamicMaxReplies) {
+          console.log(`Night queue reply skipped for ${item.phone}: Reached dynamic daily conversation depth (${dynamicMaxReplies}).`);
+          await db.addLog('info', `Overnight reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${item.contactName || item.phone}.`);
+          return;
+        }
+
         // 3. Stagger delay (simulate reading: 1.5 seconds)
         await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -372,6 +402,36 @@ class WarmupScheduler {
 
             // 2. Mark Read (V כחול)
             await markRead(reply.remoteJid, reply.msgKey);
+
+            // Check quota and depth limits before proceeding with reply
+            const todayStr = db.getTodayDateString();
+            const stats = db.getStatsForDate(todayStr);
+            const dailyQuota = getDailyQuota();
+            if (stats.outgoing >= dailyQuota) {
+              console.log(`Delayed reply skipped for ${reply.phone}: Daily outgoing quota reached (${stats.outgoing}/${dailyQuota}).`);
+              await db.addLog('warning', `Delayed reply skipped: Daily quota limit reached (${stats.outgoing}/${dailyQuota}).`);
+              return;
+            }
+
+            const todayContactLogs = db.getLogs().filter(log =>
+              log.phone === reply.phone &&
+              (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
+              log.timestamp && log.timestamp.startsWith(todayStr)
+            );
+            const baseCap = config.maxRepliesPerContactPerDay || 4;
+            const hashStr = reply.phone + todayStr;
+            let hash = 0;
+            for (let i = 0; i < hashStr.length; i++) {
+              hash = (hash << 5) - hash + hashStr.charCodeAt(i);
+            }
+            const variance = (Math.abs(hash) % 3) - 1;
+            const dynamicMaxReplies = Math.max(2, baseCap + variance);
+
+            if (todayContactLogs.length >= dynamicMaxReplies) {
+              console.log(`Delayed reply skipped for ${reply.phone}: Reached dynamic daily conversation depth (${dynamicMaxReplies}).`);
+              await db.addLog('info', `Delayed reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${reply.contactName || reply.phone}.`);
+              return;
+            }
 
             // 3. Stagger delay (simulate reading: 1.5 seconds)
             await new Promise(resolve => setTimeout(resolve, 1500));
