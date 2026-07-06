@@ -3,8 +3,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import db from './database.js';
 import { getConfig, isNightTime, isWeekend, getDailyQuota, getIsraelTime } from './config.js';
-import { generateStarter, generateReply, generateStatusText, generateStatusCaption, generateImagePrompt } from './gemini.js';
-import { sendMessage, sendStatusText, sendStatusImage, sendStatus, markRead, sendReaction, sendTypingState } from './evolution.js';
+import { sendMessage, sendStatusText, sendStatusImage, sendStatus, markRead, sendReaction, sendTypingState, handleLimitStop } from './evolution.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -262,14 +261,13 @@ class WarmupScheduler {
     // Process asynchronously to stagger and not block loop execution
     setTimeout(async () => {
       try {
-        // Check quota and depth limits before marking read or replying (leave unread if stopped!)
+        // Check quota and depth limits before marking read or replying
         const todayStr = db.getTodayDateString();
         const stats = db.getStatsForDate(todayStr);
         const dailyQuota = getDailyQuota();
         const emergencyQuota = Math.floor(dailyQuota * 1.5);
         if (stats.outgoing >= emergencyQuota) {
-          console.log(`Night queue reply skipped for ${item.phone}: Emergency outgoing quota reached (${stats.outgoing}/${emergencyQuota}).`);
-          await db.addLog('warning', `Overnight reply skipped: Emergency quota limit reached (${stats.outgoing}/${emergencyQuota}). Left unread.`);
+          await handleLimitStop(item.phone, item.remoteJid, item.msgKey, item.contactName, `Emergency quota reached (${stats.outgoing}/${emergencyQuota})`);
           return;
         }
 
@@ -288,8 +286,7 @@ class WarmupScheduler {
         const dynamicMaxReplies = Math.max(2, baseCap + variance);
 
         if (todayContactLogs.length >= dynamicMaxReplies) {
-          console.log(`Night queue reply skipped for ${item.phone}: Reached dynamic daily conversation depth (${dynamicMaxReplies}).`);
-          await db.addLog('info', `Overnight reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${item.contactName || item.phone}. Left unread.`);
+          await handleLimitStop(item.phone, item.remoteJid, item.msgKey, item.contactName, `Conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies})`);
           return;
         }
 
@@ -398,14 +395,13 @@ class WarmupScheduler {
           try {
             await db.addLog('info', `Starting delayed reply sequence for ${reply.phone}`);
 
-            // Check quota and depth limits before marking read or replying (leave unread if stopped!)
+            // Check quota and depth limits before marking read or replying
             const todayStr = db.getTodayDateString();
             const stats = db.getStatsForDate(todayStr);
             const dailyQuota = getDailyQuota();
             const emergencyQuota = Math.floor(dailyQuota * 1.5);
             if (stats.outgoing >= emergencyQuota) {
-              console.log(`Delayed reply skipped for ${reply.phone}: Emergency outgoing quota reached (${stats.outgoing}/${emergencyQuota}).`);
-              await db.addLog('warning', `Delayed reply skipped: Emergency quota limit reached (${stats.outgoing}/${emergencyQuota}). Left unread.`);
+              await handleLimitStop(reply.phone, reply.remoteJid, reply.msgKey, reply.contactName, `Emergency quota reached (${stats.outgoing}/${emergencyQuota})`);
               return;
             }
 
@@ -424,8 +420,7 @@ class WarmupScheduler {
             const dynamicMaxReplies = Math.max(2, baseCap + variance);
 
             if (todayContactLogs.length >= dynamicMaxReplies) {
-              console.log(`Delayed reply skipped for ${reply.phone}: Reached dynamic daily conversation depth (${dynamicMaxReplies}).`);
-              await db.addLog('info', `Delayed reply skipped: Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${reply.contactName || reply.phone}. Left unread.`);
+              await handleLimitStop(reply.phone, reply.remoteJid, reply.msgKey, reply.contactName, `Conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies})`);
               return;
             }
 

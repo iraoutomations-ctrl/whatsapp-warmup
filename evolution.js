@@ -456,3 +456,34 @@ export async function sendStatusImage(localImagePath, caption = '') {
     return false;
   }
 }
+
+/**
+ * Handles stopping a conversation when a limit (quota or depth) is reached.
+ * Randomly decides whether to perform a "silent read" (blue checkmark without reply)
+ * or leave the message unread (gray checkmarks), respecting a daily silent read quota.
+ */
+export async function handleLimitStop(phone, remoteJid, msgKey, contactName, reason) {
+  const config = getConfig();
+  const todayStr = db.getTodayDateString();
+  const maxSilentReads = config.maxSilentReadsPerDay || 4;
+  
+  const todaySilentReads = db.getLogs().filter(log =>
+    log.timestamp && log.timestamp.startsWith(todayStr) &&
+    typeof log.message === 'string' && log.message.includes('[SILENT_READ]')
+  ).length;
+
+  const shouldSilentRead = todaySilentReads < maxSilentReads && Math.random() < 0.40;
+  if (shouldSilentRead && remoteJid && msgKey) {
+    console.log(`[SILENT_READ] Marking message read without replying for ${phone} (${todaySilentReads + 1}/${maxSilentReads} today). Reason: ${reason}`);
+    await db.addLog('info', `[SILENT_READ] Left blue checkmark without replying for ${contactName || phone} (${reason}).`, '', phone);
+    setTimeout(async () => {
+      try {
+        await sendTypingState(phone, 'available', 1500);
+        await markRead(remoteJid, msgKey);
+      } catch (e) {}
+    }, 3000);
+  } else {
+    console.log(`Leaving message unread (no blue checkmark) for ${phone}. Reason: ${reason}`);
+    await db.addLog('info', `Left message unread without replying for ${contactName || phone} (${reason}).`, '', phone);
+  }
+}

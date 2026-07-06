@@ -4,8 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import db from './database.js';
 import scheduler from './scheduler.js';
-import { getConfig, isNightTime, getDailyQuota } from './config.js';
-import { sendMessage, markRead, sendReaction, sendTypingState } from './evolution.js';
+import { sendMessage, markRead, sendReaction, sendTypingState, handleLimitStop } from './evolution.js';
 import { generateReply, generateGroupReply } from './gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -145,9 +144,8 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     const dailyQuota = getDailyQuota();
     const emergencyQuota = Math.floor(dailyQuota * 1.5);
     if (stats.outgoing >= emergencyQuota) {
-      console.log(`Emergency outgoing quota reached (${stats.outgoing}/${emergencyQuota}). Leaving message from ${phone} unread without replying.`);
-      await db.addLog('warning', `Emergency quota reached (${stats.outgoing}/${emergencyQuota}). Left message unread (no blue checkmark) for ${contact.name || phone}.`);
-      return res.json({ status: 'success', detail: 'Emergency quota reached (left unread)' });
+      await handleLimitStop(phone, remoteJid, data.key, contact.name, `Emergency quota reached (${stats.outgoing}/${emergencyQuota})`);
+      return res.json({ status: 'success', detail: 'Emergency quota reached' });
     }
 
     // Check per-contact daily conversation depth cap with human variance (-1, 0, +1 around base limit)
@@ -166,9 +164,8 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
     const dynamicMaxReplies = Math.max(2, baseCap + variance);
 
     if (todayContactLogs.length >= dynamicMaxReplies) {
-      console.log(`Reached dynamic daily conversation depth (${dynamicMaxReplies}) for ${contact.name || phone}. Stopping replies and leaving unread for today.`);
-      await db.addLog('info', `Daily conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies}) for ${contact.name || phone}. Left message unread (no blue checkmark).`);
-      return res.json({ status: 'success', detail: 'Max daily contact depth reached (left unread)' });
+      await handleLimitStop(phone, remoteJid, data.key, contact.name, `Conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies})`);
+      return res.json({ status: 'success', detail: 'Max daily contact depth reached' });
     }
 
     // Check night rest mode (only if enabled in dashboard settings)
