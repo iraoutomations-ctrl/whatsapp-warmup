@@ -15,12 +15,17 @@ export async function callGemini(systemPrompt, userPrompt, temperature = 0.8) {
 
   // List of models to try in case of rate limits, overload (429/503), or deprecated names
   const models = [
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro',
-    'gemini-2.0-flash-lite-preview-02-05',
+    // 1. Production Ready / GA (Stable & Fast)
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite',
     'gemini-2.5-flash',
-    'gemini-2.5-pro'
+    'gemini-2.5-pro',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    // 2. Preview / Experimental
+    'gemini-3.1-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-3-pro-preview'
   ];
 
   let lastError = null;
