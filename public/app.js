@@ -10,23 +10,35 @@ async function fetchAPI(endpoint, options = {}) {
         ...options.headers
       }
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      if (response.status === 403) {
+      if (response.status === 403 && !options.silentAuth) {
         showNotification('שגיאת הרשאה: נדרשת התחברות עם קוד מנהל לבצע פעולה זו (לחץ על כפתור כניסת מנהל בכותרת)', 'error');
       }
       throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error(`API Call failed to ${endpoint}:`, error);
-    if (!error.message.includes('שגיאת הרשאה')) {
+    if (!error.message.includes('שגיאת הרשאה') && !options.silentAuth) {
       showNotification(error.message, 'error');
     }
     throw error;
   }
+}
+
+// Escapes untrusted text (WhatsApp message content, contact names, etc.) before
+// it's interpolated into innerHTML, to prevent stored XSS via injected messages.
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // Global State
@@ -34,6 +46,7 @@ let isAdmin = false;
 let contactsList = [];
 let logsList = [];
 let systemStatus = {};
+let adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
 let simulatorHistory = [];
 let activeChatPhone = null;
 
@@ -165,6 +178,7 @@ async function checkAdminAuth() {
   const pin = localStorage.getItem('adminPin') || '';
   if (!pin) {
     isAdmin = false;
+    adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
     updateAdminUI();
     return;
   }
@@ -176,7 +190,16 @@ async function checkAdminAuth() {
     });
     const data = await res.json();
     isAdmin = !!data.success;
-    if (!isAdmin) localStorage.removeItem('adminPin');
+    if (!isAdmin) {
+      localStorage.removeItem('adminPin');
+      adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
+    } else {
+      try {
+        adminSecrets = await fetchAPI('/api/settings/secrets');
+      } catch (e) {
+        adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
+      }
+    }
   } catch (e) {
     isAdmin = false;
   }
@@ -282,15 +305,21 @@ async function fetchStatus() {
 }
 
 async function fetchContacts() {
-  const contacts = await fetchAPI('/api/contacts');
-  contactsList = contacts;
+  try {
+    contactsList = await fetchAPI('/api/contacts', { silentAuth: true });
+  } catch (e) {
+    contactsList = [];
+  }
   updateContactsUI();
   updateSimulatorDropdown();
 }
 
 async function fetchLogs() {
-  const logs = await fetchAPI('/api/logs');
-  logsList = logs;
+  try {
+    logsList = await fetchAPI('/api/logs', { silentAuth: true });
+  } catch (e) {
+    logsList = [];
+  }
   updateLogsUI();
 }
 
@@ -401,11 +430,15 @@ function updateStatusUI() {
 
   // 7. Populating form elements with config settings (only if form isn't dirty/being edited)
   if (!settingsForm.classList.contains('dirty')) {
-    document.getElementById('setting-gemini-key').value = config.geminiApiKey || '';
+    // Secret values never come from the public /api/status payload - only from the
+    // admin-only /api/settings/secrets fetch performed in checkAdminAuth().
+    document.getElementById('setting-gemini-key').value = isAdmin ? (adminSecrets.geminiApiKey || '') : '';
     document.getElementById('setting-evo-url').value = config.evolutionUrl || '';
-    document.getElementById('setting-evo-token').value = config.evolutionToken || '';
+    document.getElementById('setting-evo-token').value = isAdmin ? (adminSecrets.evolutionToken || '') : '';
     document.getElementById('setting-evo-instance').value = config.evolutionInstance || '';
-    
+    const webhookSecretInput = document.getElementById('setting-webhook-secret');
+    if (webhookSecretInput) webhookSecretInput.value = isAdmin ? (adminSecrets.webhookSecret || '') : '';
+
     document.getElementById('setting-current-day').value = config.currentDay;
     document.getElementById('setting-warmup-enabled').checked = config.warmupEnabled;
     document.getElementById('setting-rest-start').value = config.nightRestStart;
@@ -443,9 +476,9 @@ function updateLogsUI() {
   let html = '';
   logsList.forEach(log => {
     const timeStr = new Date(log.timestamp).toLocaleTimeString();
-    let detailsHtml = `<strong>[${log.type.toUpperCase()}]</strong> ${log.details}`;
+    let detailsHtml = `<strong>[${escapeHtml(log.type.toUpperCase())}]</strong> ${escapeHtml(log.details)}`;
     if (log.message) {
-      detailsHtml += `<span class="log-text-msg">${log.message}</span>`;
+      detailsHtml += `<span class="log-text-msg">${escapeHtml(log.message)}</span>`;
     }
     html += `
       <div class="log-item ${log.type}">
@@ -482,9 +515,9 @@ function updateContactsUI() {
       
     html += `
       <tr>
-        <td><strong>${contact.name}</strong></td>
-        <td>${contact.phone}</td>
-        <td class="text-muted">${contact.notes || '-'}</td>
+        <td><strong>${escapeHtml(contact.name)}</strong></td>
+        <td>${escapeHtml(contact.phone)}</td>
+        <td class="text-muted">${escapeHtml(contact.notes) || '-'}</td>
         <td>${contact.messageCount}</td>
         <td><small>${lastActive}</small></td>
         <td>
@@ -513,7 +546,7 @@ function updateSimulatorDropdown() {
   const currentSelected = simContactSelect.value;
   let html = '<option value="">-- בחר איש קשר מודרך --</option>';
   contactsList.forEach(contact => {
-    html += `<option value="${contact.phone}">${contact.name} (${contact.phone})</option>`;
+    html += `<option value="${escapeHtml(contact.phone)}">${escapeHtml(contact.name)} (${escapeHtml(contact.phone)})</option>`;
   });
   if (simContactSelect.innerHTML !== html) {
     simContactSelect.innerHTML = html;
@@ -559,7 +592,8 @@ async function handleSaveSettings(e) {
     evolutionUrl: document.getElementById('setting-evo-url').value,
     evolutionToken: document.getElementById('setting-evo-token').value,
     evolutionInstance: document.getElementById('setting-evo-instance').value,
-    
+    webhookSecret: document.getElementById('setting-webhook-secret')?.value ?? adminSecrets.webhookSecret,
+
     currentDay: parseInt(document.getElementById('setting-current-day').value),
     warmupEnabled: document.getElementById('setting-warmup-enabled').checked,
     nightRestStart: document.getElementById('setting-rest-start').value,
@@ -587,6 +621,11 @@ async function handleSaveSettings(e) {
     if (result.success) {
       showNotification('ההגדרות נשמרו ועודכנו במערכת!', 'success');
       settingsForm.classList.remove('dirty');
+      adminSecrets = {
+        geminiApiKey: payload.geminiApiKey,
+        evolutionToken: payload.evolutionToken,
+        webhookSecret: payload.webhookSecret
+      };
       await fetchStatus();
     }
   } catch (err) {
@@ -723,9 +762,9 @@ function appendSimulatorMessage(sender, text, direction) {
   const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
   div.innerHTML = `
-    <span class="msg-sender">${sender}</span>
-    <span class="msg-text">${text}</span>
-    <span class="msg-time">${timeStr}</span>
+    <span class="msg-sender">${escapeHtml(sender)}</span>
+    <span class="msg-text">${escapeHtml(text)}</span>
+    <span class="msg-time">${escapeHtml(timeStr)}</span>
   `;
   
   phoneChatHistory.appendChild(div);
@@ -942,14 +981,14 @@ function updateLiveChatUI() {
     const initials = contact.name ? contact.name.trim().substring(0, 2) : 'U';
 
     html += `
-      <div class="chat-item ${isActive}" data-phone="${contact.phone}">
-        <div class="chat-item-avatar">${initials}</div>
+      <div class="chat-item ${isActive}" data-phone="${escapeHtml(contact.phone)}">
+        <div class="chat-item-avatar">${escapeHtml(initials)}</div>
         <div class="chat-item-info">
           <div class="chat-item-name-row">
-            <span class="chat-item-name">${contact.name}</span>
-            <span class="chat-item-time">${lastMsgTime}</span>
+            <span class="chat-item-name">${escapeHtml(contact.name)}</span>
+            <span class="chat-item-time">${escapeHtml(lastMsgTime)}</span>
           </div>
-          <span class="chat-item-preview">${lastMsgPreview}</span>
+          <span class="chat-item-preview">${escapeHtml(lastMsgPreview)}</span>
           <div class="chat-item-status-row">
             ${statusBadge}
           </div>
@@ -1059,9 +1098,9 @@ function renderActiveChat() {
 
       html += `
         <div class="chat-bubble ${bubbleClass}">
-          ${!isOutgoing && index === 0 ? `<span class="msg-sender">${contact.name}</span>` : ''}
-          <div class="msg-text">${cleanPart}</div>
-          <span class="msg-time">${timeStr}</span>
+          ${!isOutgoing && index === 0 ? `<span class="msg-sender">${escapeHtml(contact.name)}</span>` : ''}
+          <div class="msg-text">${escapeHtml(cleanPart)}</div>
+          <span class="msg-time">${escapeHtml(timeStr)}</span>
         </div>
       `;
     });

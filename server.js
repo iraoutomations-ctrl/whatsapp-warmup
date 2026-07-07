@@ -29,11 +29,24 @@ function extractTextFromMessage(messageObj) {
 }
 
 /**
- * Webhook endpoint to receive events from Evolution API
+ * Webhook endpoint to receive events from Evolution API.
+ * If a webhookSecret is configured, requests must present it via the URL path
+ * segment, an 'x-webhook-secret' header, or a 'secret' query param - otherwise
+ * anyone who finds this URL could inject fake incoming messages.
  */
-app.post(['/webhook', '/api/webhook'], async (req, res) => {
+app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'], async (req, res) => {
+  const config = getConfig();
+  if (config.webhookSecret) {
+    const providedSecret = req.params.secret || req.headers['x-webhook-secret'] || req.query.secret;
+    if (providedSecret !== config.webhookSecret) {
+      return res.status(401).json({ error: 'Unauthorized: invalid or missing webhook secret' });
+    }
+  } else {
+    console.warn('WARNING: No webhookSecret configured - /webhook is publicly reachable without authentication. Set one in Settings.');
+  }
+
   const { event, data } = req.body;
-  
+
   // Return early if payload doesn't contain needed keys
   if (!event || !data) {
     return res.status(400).json({ status: 'ignored', reason: 'Missing event or data' });
@@ -269,15 +282,28 @@ app.post(['/webhook', '/api/webhook'], async (req, res) => {
 // ----------------------------------------------------
 
 /**
+ * Strips secrets (API keys, tokens, admin PIN) from a config object before
+ * it's sent to unauthenticated clients.
+ */
+function sanitizeConfigForPublic(config) {
+  const { geminiApiKey, evolutionToken, adminPin, webhookSecret, ...publicConfig } = config;
+  return {
+    ...publicConfig,
+    hasGeminiKey: !!geminiApiKey,
+    hasEvolutionToken: !!evolutionToken
+  };
+}
+
+/**
  * Get current configuration, status, stats for today, and queued item counts
  */
 app.get('/api/status', (req, res) => {
-  const config = getConfig();
+  const config = sanitizeConfigForPublic(getConfig());
   const today = db.getTodayDateString();
   const stats = db.getStatsForDate(today);
   const dailyQuota = getDailyQuota();
   const settings = db.getSettings();
-  
+
   res.json({
     config,
     stats: {
@@ -317,6 +343,19 @@ app.post('/api/verify-pin', (req, res) => {
   const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'Liran!192837';
   const providedPin = req.headers['x-admin-pin'] || req.body?.pin;
   res.json({ success: providedPin === requiredPin });
+});
+
+/**
+ * Admin-only: fetch the raw secret values (Gemini/Evolution credentials) so the
+ * settings form can be populated. Never exposed via the public /api/status route.
+ */
+app.get('/api/settings/secrets', requireAdmin, (req, res) => {
+  const config = getConfig();
+  res.json({
+    geminiApiKey: config.geminiApiKey,
+    evolutionToken: config.evolutionToken,
+    webhookSecret: config.webhookSecret
+  });
 });
 
 /**
@@ -507,9 +546,9 @@ app.get('/api/test-connection', async (req, res) => {
 });
 
 /**
- * Get all guided contacts
+ * Get all guided contacts (contains phone numbers/PII - admin only)
  */
-app.get('/api/contacts', (req, res) => {
+app.get('/api/contacts', requireAdmin, (req, res) => {
   res.json(db.getContacts());
 });
 
@@ -560,9 +599,9 @@ app.delete('/api/contacts/:phone', requireAdmin, async (req, res) => {
 });
 
 /**
- * Get system logs
+ * Get system logs (contains full conversation content - admin only)
  */
-app.get('/api/logs', (req, res) => {
+app.get('/api/logs', requireAdmin, (req, res) => {
   const limit = req.query.limit ? parseInt(req.query.limit) : 200;
   res.json(db.getLogs(limit));
 });
@@ -632,7 +671,8 @@ app.post('/api/test/incoming', requireAdmin, async (req, res) => {
     const response = await fetch(`http://localhost:${serverPort}/webhook`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(config.webhookSecret ? { 'x-webhook-secret': config.webhookSecret } : {})
       },
       body: JSON.stringify(mockPayload)
     });

@@ -16,7 +16,8 @@ export function getConfig() {
     evolutionToken: dbSettings.evolutionToken || process.env.EVOLUTION_API_TOKEN || '',
     evolutionInstance: dbSettings.evolutionInstance || process.env.EVOLUTION_API_INSTANCE || '',
     geminiApiKey: dbSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
-    
+    webhookSecret: dbSettings.webhookSecret || process.env.WEBHOOK_SECRET || '',
+
     // Limits & Rules
     nightRestStart: dbSettings.nightRestStart || '23:00',
     nightRestEnd: dbSettings.nightRestEnd || '08:00',

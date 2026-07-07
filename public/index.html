@@ -332,6 +332,12 @@
               <input type="text" id="setting-evo-instance" placeholder="yozma-whatsapp">
             </div>
 
+            <div class="form-group">
+              <label for="setting-webhook-secret">Webhook Secret (הגנה על /webhook מפני הודעות מזויפות):</label>
+              <input type="password" id="setting-webhook-secret" placeholder="בחר מחרוזת סודית אקראית">
+              <small class="text-muted">אחרי שמירה, עדכן ב-Evolution API את כתובת ה-webhook ל: <code>/webhook/&lt;הסוד שבחרת&gt;</code></small>
+            </div>
+
             <button class="btn btn-outline" id="btn-test-connection" type="button" style="margin-top: 15px; width: 100%;">🔍 בדיקת התממשקות וחיבור API</button>
             <div id="connection-test-results"></div>
           </div>

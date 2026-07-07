@@ -30,6 +30,7 @@ class JSONDatabase {
         evolutionToken: process.env.EVOLUTION_API_TOKEN || '',
         evolutionInstance: process.env.EVOLUTION_API_INSTANCE || '',
         geminiApiKey: process.env.GEMINI_API_KEY || '',
+        webhookSecret: process.env.WEBHOOK_SECRET || '',
         nightRestStart: '23:00',
         nightRestEnd: '08:00',
         activeMinIntervalMinutes: 30,
