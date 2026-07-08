@@ -51,7 +51,12 @@ export function getConfig() {
     // Public leaderboard retention rules
     leaderboardRetentionDays: dbSettings.leaderboardRetentionDays !== undefined ? Number(dbSettings.leaderboardRetentionDays) : 3,
     leaderboardMinVotesToKeep: dbSettings.leaderboardMinVotesToKeep !== undefined ? Number(dbSettings.leaderboardMinVotesToKeep) : 3,
-    leaderboardTopNAlwaysKept: dbSettings.leaderboardTopNAlwaysKept !== undefined ? Number(dbSettings.leaderboardTopNAlwaysKept) : 10
+    leaderboardTopNAlwaysKept: dbSettings.leaderboardTopNAlwaysKept !== undefined ? Number(dbSettings.leaderboardTopNAlwaysKept) : 10,
+
+    // Public leaderboard signup + auto-publish
+    leaderboardMinMessagesToPublish: dbSettings.leaderboardMinMessagesToPublish !== undefined ? Number(dbSettings.leaderboardMinMessagesToPublish) : 4,
+    leaderboardTopics: Array.isArray(dbSettings.leaderboardTopics) ? dbSettings.leaderboardTopics : ['עבודה', 'לימודים', 'סתם שיחת חולין', 'חברים'],
+    botWhatsappNumber: dbSettings.botWhatsappNumber || ''
   };
 }
 

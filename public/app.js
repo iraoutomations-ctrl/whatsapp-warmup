@@ -45,6 +45,7 @@ function escapeHtml(value) {
 let isAdmin = false;
 let contactsList = [];
 let logsList = [];
+let leaderboardChats = [];
 let systemStatus = {};
 let adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
 let simulatorHistory = [];
@@ -278,7 +279,8 @@ async function loadData() {
   await Promise.all([
     fetchStatus(),
     fetchContacts(),
-    fetchLogs()
+    fetchLogs(),
+    fetchLeaderboardChats()
   ]);
   updateLiveChatUI();
   updateAdminUI();
@@ -290,6 +292,7 @@ async function pollRealtimeData() {
     await fetchStatus();
     await fetchContacts();
     await fetchLogs();
+    await fetchLeaderboardChats();
     updateLiveChatUI();
     updateAdminUI();
   } catch (err) {
@@ -321,6 +324,15 @@ async function fetchLogs() {
     logsList = [];
   }
   updateLogsUI();
+}
+
+async function fetchLeaderboardChats() {
+  try {
+    leaderboardChats = await fetchAPI('/api/admin/chats', { silentAuth: true });
+  } catch (e) {
+    leaderboardChats = [];
+  }
+  updateLeaderboardUI();
 }
 
 // Update Status indicators and stats
@@ -455,6 +467,10 @@ function updateStatusUI() {
     
     document.getElementById('setting-groups-enabled').checked = config.groupsEnabled;
     document.getElementById('setting-group-limit').value = config.groupReplyLimitPerDay;
+
+    document.getElementById('setting-bot-whatsapp-number').value = config.botWhatsappNumber || '';
+    document.getElementById('setting-leaderboard-topics').value = (config.leaderboardTopics || []).join(', ');
+    document.getElementById('setting-leaderboard-min-messages').value = config.leaderboardMinMessagesToPublish || 4;
   }
 }
 
@@ -541,6 +557,60 @@ function updateContactsUI() {
   }
 }
 
+const STATUS_BADGE = {
+  draft: { label: 'ממתין לסף הודעות', color: '#9ca3af' },
+  published: { label: 'פורסם', color: '#34d399' },
+  archived: { label: 'הוסר מהאתר', color: '#f87171' }
+};
+
+// Update Leaderboard Kill Switch table - chats publish themselves
+// automatically; the only admin action here is emergency removal.
+function updateLeaderboardUI() {
+  const tbody = document.getElementById('leaderboard-table-body');
+  if (!tbody) return;
+
+  if (leaderboardChats.length === 0) {
+    const emptyHtml = `<tr><td colspan="6" class="text-center text-muted italic">אין עדיין צ'אטים בלידרבורד.</td></tr>`;
+    if (tbody.innerHTML !== emptyHtml) tbody.innerHTML = emptyHtml;
+    return;
+  }
+
+  let html = '';
+  leaderboardChats.forEach(chat => {
+    const badge = STATUS_BADGE[chat.status] || { label: chat.status, color: '#9ca3af' };
+    const published = chat.publishedAt ? new Date(chat.publishedAt).toLocaleString() : '-';
+    html += `
+      <tr>
+        <td><strong>${escapeHtml(chat.displayAlias)}</strong></td>
+        <td><span style="color: ${badge.color}">●</span> ${badge.label}</td>
+        <td>${chat.messages.length}</td>
+        <td>${chat.voteCount}</td>
+        <td><small>${published}</small></td>
+        <td>
+          ${chat.status === 'archived'
+            ? '<span class="text-muted">-</span>'
+            : `<button class="btn btn-sm btn-danger" onclick="archiveLeaderboardChat('${chat.id}')" title="הסר מיידית מהאתר הציבורי">מחק/הסתר מהאתר 🚨</button>`}
+        </td>
+      </tr>
+    `;
+  });
+
+  if (tbody.innerHTML !== html) {
+    tbody.innerHTML = html;
+  }
+}
+
+window.archiveLeaderboardChat = async function(id) {
+  if (!confirm('להסיר את הצ\'אט הזה מהאתר הציבורי מיידית?')) return;
+  try {
+    await fetchAPI(`/api/admin/chats/${id}/archive`, { method: 'POST' });
+    showNotification('הצ\'אט הוסר מהאתר הציבורי.', 'success');
+    await fetchLeaderboardChats();
+  } catch (err) {
+    // Already handled by fetchAPI's error notification
+  }
+};
+
 // Update Simulator Contact select list
 function updateSimulatorDropdown() {
   const currentSelected = simContactSelect.value;
@@ -609,7 +679,12 @@ async function handleSaveSettings(e) {
     maxSilentReadsPerDay: parseInt(document.getElementById('setting-max-silent').value) || 4,
     
     groupsEnabled: document.getElementById('setting-groups-enabled').checked,
-    groupReplyLimitPerDay: parseInt(document.getElementById('setting-group-limit').value)
+    groupReplyLimitPerDay: parseInt(document.getElementById('setting-group-limit').value),
+
+    botWhatsappNumber: document.getElementById('setting-bot-whatsapp-number').value.replace(/\D/g, ''),
+    leaderboardTopics: document.getElementById('setting-leaderboard-topics').value
+      .split(',').map(t => t.trim()).filter(Boolean),
+    leaderboardMinMessagesToPublish: parseInt(document.getElementById('setting-leaderboard-min-messages').value) || 4
   };
   
   try {

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>נהוראי - הלידרבורד הכי שכונתי בוואטסאפ</title>
+  <link rel="icon" href="/nehorai/icom.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="leaderboard.css">
+</head>
+<body>
+
+  <section class="hero">
+    <div class="hero-video-wrap">
+      <video id="hero-video" src="/nehorai/nehori.mp4" autoplay muted loop playsinline></video>
+    </div>
+    <img class="hero-logo" src="/nehorai/character.png" alt="נהוראי">
+    <h1>נהוראי</h1>
+    <p class="tagline">הבוט שלא עונה בזמן, אבל תמיד עונה בסטייל</p>
+
+    <div class="status-widget" id="status-widget">
+      <span class="dot"></span>
+      <span id="status-text">בודק סטטוס...</span>
+    </div>
+
+    <div class="telemetry" id="telemetry">
+      <span id="telemetry-text"></span><span class="cursor">▌</span>
+    </div>
+
+    <button class="cta-signup" id="cta-signup-btn">📲 תרשום אותי לצ'אט עם נהוראי</button>
+  </section>
+
+  <div class="container">
+    <h2 class="section-title">🏆 הלידרבורד</h2>
+    <div class="chat-grid" id="chat-grid">
+      <div class="empty-feed">טוען צ'אטים...</div>
+    </div>
+
+    <div class="docs-section">
+      <h2 class="section-title">📖 מה קורה מאחורי הקלעים</h2>
+      <div class="docs-tabs" id="docs-tabs">
+        <button class="docs-tab-btn active" data-doc="behind">מאחורי הקלעים: המלחמה בצוקרברג</button>
+        <button class="docs-tab-btn" data-doc="participant">איך לא לצאת גנוב: מדריך למשתתף</button>
+      </div>
+
+      <div class="docs-panel active" id="doc-behind">
+        <h3>🕒 קצב חיים אנושי</h3>
+        <p>נהוראי לא רובוט תעשייתי - יש לו שגרה כמו לכל ישראלי ממוצע. בין 20:00 ל-09:30 הוא ישן, הודעות שמגיעות בלילה נשמרות ומקבלות מענה בבוקר בקצב טבעי. בסופ"ש הכל מואט - קצב היוזמות יורד פי 5 וה"מכסה" היומית נחתכת בחצי, כי גם בוט צריך מנוחה.</p>
+        <h3>📱 טלמטריה מול Meta</h3>
+        <p>מול שרתי WhatsApp נהוראי משדר בדיוק כמו טלפון אמיתי ביד: השהיה של כמה שניות לפני שמסמן "נקרא", "וי כחול" אמיתי, זמן הקלדה שמחושב לפי אורך ההודעה, ומעבר בין "מחובר" ל"לא מחובר" בדיוק כמו בן אדם שסוגר את האפליקציה.</p>
+        <h3>🛡️ לא לעורר חשד</h3>
+        <p>כדי לא להיתפס כספאם, נהוראי לא מדבר לנצח עם אותו אחד - כל יום הוא מגריל כמה תגובות ייתן (3-5) ומפזר את הפעילות בין כמה אנשים, בדיוק כמו רשת חברתית אמיתית.</p>
+        <h3>👻 עסוק ורחוק מהטלפון</h3>
+        <p>לפעמים נהוראי סתם לא זמין - באמצע נהיגה, ישיבה, או "על האש". אז הוא משהה תשובה בכמה דקות, ואם שולחים לו כמה הודעות ברצף הוא עונה על הכל ביחד כשהוא חוזר.</p>
+      </div>
+
+      <div class="docs-panel" id="doc-participant">
+        <h3>מה קורה כשנרשמים?</h3>
+        <p>ברגע שנרשמת ואישרת את התנאים, אתה נכנס לרשימת החברים של נהוראי. הוא יפתח איתך שיחה על הנושא שבחרת, ומשם זה פתוח - כמה שתדבר איתו, ככה השיחה שלכם תיראה יותר.</p>
+        <h3>הכל גלוי, בלי הפתעות</h3>
+        <p>השם שבחרת בהרשמה והשיחה שלך עם נהוראי מוצגים בעמוד הזה לכולם, לצורך הדירוג בלידרבורד. אל תשתף שם אמיתי אם אתה לא רוצה שיזהו אותך, ואל תכתוב מספרי כרטיס אשראי, תעודת זהות או כל מידע רגיש אחר - הכל כאן פומבי.</p>
+        <h3>איך לצאת ברשימה הראשונה</h3>
+        <p>ככל שהצ'אט שלך מצחיק/מוזר/שכונתי יותר - ככה הוא יקבל יותר הצבעות. אין עריכה, אין סינון - מה שכתבת זה מה שיפורסם.</p>
+      </div>
+    </div>
+
+    <p class="footer-note">נהוראי הוא דמות בדיונית. משתתפים בהרשמה מרצונם החופשי ויודעים שהשיחה גלויה לציבור.</p>
+  </div>
+
+  <!-- Signup flow modal -->
+  <div class="modal-overlay" id="signup-modal">
+    <div class="modal-box">
+
+      <div id="signup-step-guide">
+        <h2>לפני שנרשמים...</h2>
+        <p>נהוראי מדבר כמו חבר אמיתי - עם סלנג, עיכובים, ולפעמים "נעלם" באמצע שיחה כי הוא "בישיבה עם האחים". זה חלק מהכיף.</p>
+        <div class="consent-box">
+          <input type="checkbox" id="consent-checkbox">
+          <label for="consent-checkbox">אני מבין/ה ומסכים/ה ש<strong>שם התצוגה שאבחר וכל השיחה שלי עם נהוראי יהיו גלויים לציבור</strong> בעמוד הזה, לצורך הדירוג בלידרבורד.</label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="signup-cancel-1">ביטול</button>
+          <button class="btn-primary" id="signup-continue" disabled>המשך</button>
+        </div>
+      </div>
+
+      <div id="signup-step-form" style="display:none;">
+        <h2>פרטי הרשמה</h2>
+        <div class="form-field">
+          <label for="topic-select">על מה תרצה לדבר עם נהוראי?</label>
+          <select id="topic-select"></select>
+        </div>
+        <div class="form-field">
+          <label for="alias-input">שם תצוגה (זה מה שכולם יראו)</label>
+          <input type="text" id="alias-input" maxlength="30" placeholder="לדוגמה: הקוזי מרמת גן">
+        </div>
+        <div class="form-field">
+          <label for="phone-input">מספר טלפון (וואטסאפ)</label>
+          <input type="tel" id="phone-input" placeholder="050-1234567">
+        </div>
+        <input type="text" id="website-honeypot" class="honeypot-field" tabindex="-1" autocomplete="off">
+        <div class="form-error" id="signup-error"></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="signup-back">חזרה</button>
+          <button class="btn-primary" id="signup-submit">קדימה, תפתח לי וואטסאפ</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="leaderboard.js"></script>
+</body>
+</html>

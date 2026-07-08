@@ -116,6 +116,7 @@
       <button class="tab-btn" data-tab="livechat">💬 צ'אט בזמן אמת</button>
       <button class="tab-btn" data-tab="simulator">🤖 סימולטור שיחות</button>
       <button class="tab-btn" data-tab="settings">⚙️ הגדרות מערכת</button>
+      <button class="tab-btn" data-tab="leaderboard">🏆 לידרבורד</button>
       <button class="tab-btn" data-tab="documentation">📖 מדריך ומסמכי מערכת</button>
     </nav>
 
@@ -432,11 +433,61 @@
             </div>
           </div>
 
+          <!-- Col 3: Public Leaderboard -->
+          <div class="settings-box">
+            <h3>🏆 לידרבורד ציבורי (נהוראי)</h3>
+
+            <div class="form-group">
+              <label for="setting-bot-whatsapp-number">מספר הוואטסאפ של הבוט (בפורמט בינלאומי, למשל 9725XXXXXXXX):</label>
+              <input type="text" id="setting-bot-whatsapp-number" placeholder="972501234567">
+              <small class="text-muted">המספר שאליו מפנה קישור ה-wa.me בעמוד ההרשמה הציבורי.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="setting-leaderboard-topics">נושאי שיחה בטופס ההרשמה (מופרדים בפסיקים):</label>
+              <input type="text" id="setting-leaderboard-topics" placeholder="עבודה, לימודים, סתם שיחת חולין, חברים">
+            </div>
+
+            <div class="form-group">
+              <label for="setting-leaderboard-min-messages">מינימום הודעות לפני פרסום אוטומטי בלידרבורד:</label>
+              <input type="number" id="setting-leaderboard-min-messages" min="1" required>
+            </div>
+          </div>
+
           <div class="settings-footer">
             <button type="button" class="btn btn-danger" id="btn-reset-data">אפס נתוני מערכת 🧹</button>
             <button type="submit" class="btn btn-primary" id="btn-save-settings">שמור הגדרות מוגנות 🔒</button>
           </div>
         </form>
+      </div>
+
+      <!-- Panel: Leaderboard Kill Switch -->
+      <div class="tab-content" id="tab-leaderboard">
+        <div class="section-header">
+          <h2>🏆 לידרבורד ציבורי - כפתור מצוקה</h2>
+        </div>
+        <p class="section-desc">
+          הצ'אטים עולים ומתפרסמים <strong>אוטומטית</strong> ברגע שמשתתף שהסכים לתנאים חוצה סף הודעות מינימלי - אין כאן אצירת תוכן ידנית.
+          הכלי היחיד כאן הוא <strong>הסרה מיידית</strong> של צ'אט מהאתר הציבורי (חשיפת מידע פרטי/פלילי, בעיה עם משתתף וכו').
+          ההסרה היא הסתרה הפיכה - הצ'אט לא נמחק מהדיסק, רק נעלם מהעמוד הציבורי מיידית.
+        </p>
+        <div class="table-container">
+          <table class="contacts-table">
+            <thead>
+              <tr>
+                <th>שם תצוגה</th>
+                <th>סטטוס</th>
+                <th>הודעות</th>
+                <th>הצבעות</th>
+                <th>פורסם</th>
+                <th>פעולה</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-table-body">
+              <tr><td colspan="6" class="text-center">טוען צ'אטים...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Panel: Documentation -->

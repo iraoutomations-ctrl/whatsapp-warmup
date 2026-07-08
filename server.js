@@ -7,7 +7,7 @@ import { rateLimit } from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import db from './database.js';
 import scheduler from './scheduler.js';
-import { getConfig, isNightTime, getDailyQuota } from './config.js';
+import { getConfig, isNightTime, getDailyQuota, getIsraelTime } from './config.js';
 import { sendMessage, markRead, sendReaction, sendTypingState, handleLimitStop } from './evolution.js';
 import { generateReply, generateGroupReply } from './gemini.js';
 
@@ -752,6 +752,65 @@ app.post('/api/public/vote', voterIdentity, voteLimiter, async (req, res) => {
       : err.message.startsWith('Chat not found') ? 404
       : 400;
     res.status(status).json({ error: err.message });
+  }
+});
+
+/**
+ * Public: signup form config - conversation topics and a coarse "bot status"
+ * (night rest / weekend) computed server-side from Israel local time, since
+ * a visitor's own browser clock/timezone can't be trusted for this.
+ */
+app.get('/api/public/config', (req, res) => {
+  const config = getConfig();
+  const { hour, weekdayNum } = getIsraelTime();
+  res.json({
+    topics: config.leaderboardTopics,
+    botStatus: {
+      isNight: isNightTime(),
+      weekdayNum, // Sun=0 ... Sat=6
+      hour
+    }
+  });
+});
+
+const signupLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many signup attempts, slow down and try again in a minute.' }
+});
+
+/**
+ * Public: self-serve signup for the leaderboard. Requires explicit
+ * consentAccepted (the visitor must actively check the "I agree my name and
+ * chats will be public" box - never defaulted true). A filled honeypot
+ * field is treated as a bot and silently accepted as a no-op.
+ */
+app.post('/api/public/signup', signupLimiter, async (req, res) => {
+  try {
+    const { phone, displayAlias, topic, consentAccepted, website } = req.body;
+
+    if (website) {
+      // Honeypot field: real visitors never see or fill this input.
+      return res.json({ success: true });
+    }
+    if (consentAccepted !== true) {
+      return res.status(400).json({ error: 'Explicit consent is required to sign up.' });
+    }
+
+    const config = getConfig();
+    if (!config.botWhatsappNumber) {
+      return res.status(500).json({ error: 'Bot WhatsApp number is not configured yet.' });
+    }
+
+    await db.registerLeaderboardSignup({ phone, displayAlias, topic });
+
+    const greeting = `היי! זה ${displayAlias}, נרשמתי דרך העמוד${topic ? ` (${topic})` : ''} 👋`;
+    const waLink = `https://wa.me/${config.botWhatsappNumber}?text=${encodeURIComponent(greeting)}`;
+    res.json({ success: true, waLink });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

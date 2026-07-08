@@ -6,6 +6,17 @@ import crypto from 'crypto';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, 'data');
 
+// Shared phone normalization: strips non-digits, maps a leading Israeli
+// mobile prefix ('05...') to the international form ('972...'). Used by
+// both the admin "add contact" flow and the public leaderboard signup.
+function normalizePhone(phone) {
+  let cleanPhone = String(phone || '').replace(/\D/g, '');
+  if (cleanPhone.startsWith('05')) {
+    cleanPhone = '972' + cleanPhone.substring(1);
+  }
+  return cleanPhone;
+}
+
 class JSONDatabase {
   constructor() {
     this.settings = {};
@@ -50,7 +61,10 @@ class JSONDatabase {
         nextActiveWarmupTargetName: '',
         leaderboardRetentionDays: 3,
         leaderboardMinVotesToKeep: 3,
-        leaderboardTopNAlwaysKept: 10
+        leaderboardTopNAlwaysKept: 10,
+        leaderboardMinMessagesToPublish: 4,
+        leaderboardTopics: ['עבודה', 'לימודים', 'סתם שיחת חולין', 'חברים'],
+        botWhatsappNumber: ''
       });
 
       // Initialize Contacts
@@ -141,10 +155,7 @@ class JSONDatabase {
     if (!contact.phone) {
       throw new Error('Phone number is required');
     }
-    let cleanPhone = contact.phone.replace(/\D/g, '');
-    if (cleanPhone.startsWith('05')) {
-      cleanPhone = '972' + cleanPhone.substring(1);
-    }
+    const cleanPhone = normalizePhone(contact.phone);
     if (!cleanPhone) {
       throw new Error('Invalid phone number format');
     }
@@ -161,9 +172,51 @@ class JSONDatabase {
       enabled: contact.enabled !== false,
       addedAt: new Date().toISOString(),
       lastInteractionAt: null,
-      messageCount: 0
+      messageCount: 0,
+      leaderboardConsent: false,
+      leaderboardDisplayAlias: '',
+      leaderboardConsentAt: null
     };
 
+    this.contacts.push(newContact);
+    await this._saveFile('contacts.json', this.contacts);
+    return newContact;
+  }
+
+  // Public leaderboard signup: upserts a contact by phone, recording their
+  // explicit consent to have their chat + chosen display name shown
+  // publicly. The chosen topic is stored as the contact's context notes,
+  // reusing the same field generateStarter() already reads.
+  async registerLeaderboardSignup({ phone, displayAlias, topic }) {
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone) {
+      throw new Error('Invalid phone number format');
+    }
+    if (!displayAlias || !String(displayAlias).trim()) {
+      throw new Error('displayAlias is required');
+    }
+
+    const consentFields = {
+      leaderboardConsent: true,
+      leaderboardDisplayAlias: String(displayAlias).trim(),
+      leaderboardConsentAt: new Date().toISOString()
+    };
+
+    const existing = this.contacts.find(c => c.phone === cleanPhone);
+    if (existing) {
+      return this.updateContact(cleanPhone, { ...consentFields, notes: topic || existing.notes });
+    }
+
+    const newContact = {
+      phone: cleanPhone,
+      name: displayAlias,
+      notes: topic || '',
+      enabled: true,
+      addedAt: new Date().toISOString(),
+      lastInteractionAt: null,
+      messageCount: 0,
+      ...consentFields
+    };
     this.contacts.push(newContact);
     await this._saveFile('contacts.json', this.contacts);
     return newContact;
@@ -209,14 +262,60 @@ class JSONDatabase {
     };
 
     this.logs.push(logEntry);
-    
+
     // Cap logs at 1000 items to prevent file bloat
     if (this.logs.length > 1000) {
       this.logs.shift();
     }
 
     await this._saveFile('logs.json', this.logs);
+
+    // Real-time leaderboard auto-publish: only for actual chat messages,
+    // and only for contacts who explicitly consented at signup. Wrapped so
+    // a leaderboard bug can never break the core message-logging pipeline.
+    if (type === 'message' && phone && message) {
+      try {
+        await this._autoAppendLeaderboardMessage(phone, message, isOutgoing);
+      } catch (err) {
+        console.error('Leaderboard auto-publish failed:', err);
+      }
+    }
+
     return logEntry;
+  }
+
+  // Appends a live chat message to the consenting contact's leaderboard
+  // entry and auto-publishes once it crosses the minimum message threshold.
+  // No content filtering of any kind - text is stored exactly as sent.
+  async _autoAppendLeaderboardMessage(phone, text, isOutgoing) {
+    const contact = this.contacts.find(c => c.phone === phone);
+    if (!contact || !contact.leaderboardConsent) return;
+
+    let chat = this.getChatByPhone(phone);
+    if (!chat) {
+      chat = {
+        id: crypto.randomUUID(),
+        contactPhone: phone,
+        displayAlias: contact.leaderboardDisplayAlias || contact.name || 'משתתף',
+        messages: [],
+        consentStatus: 'approved',
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        publishedAt: null,
+        voteCount: 0
+      };
+      this.chats.push(chat);
+    }
+
+    chat.messages.push({ text, isOutgoing, ts: new Date().toISOString() });
+
+    const threshold = this.settings.leaderboardMinMessagesToPublish || 4;
+    if (chat.status === 'draft' && chat.messages.length >= threshold) {
+      chat.status = 'published';
+      chat.publishedAt = new Date().toISOString();
+    }
+
+    await this._saveFile('chats.json', this.chats);
   }
 
   // Stats operations
@@ -278,6 +377,15 @@ class JSONDatabase {
 
   getChatById(id) {
     return this.chats.find(c => c.id === id) || null;
+  }
+
+  // Latest non-archived chat for a phone (draft or published). Archived
+  // chats never match - an emergency hide must stay hidden even if the
+  // same contact keeps messaging; a fresh chat starts instead.
+  getChatByPhone(phone) {
+    const candidates = this.chats.filter(c => c.contactPhone === phone && c.status !== 'archived');
+    if (candidates.length === 0) return null;
+    return candidates.reduce((latest, c) => (c.createdAt > latest.createdAt ? c : latest));
   }
 
   async addChat({ contactPhone, displayAlias, messages }) {
