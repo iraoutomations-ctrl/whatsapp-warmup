@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, 'data');
@@ -11,6 +12,8 @@ class JSONDatabase {
     this.contacts = [];
     this.logs = [];
     this.stats = {};
+    this.chats = [];
+    this.votes = [];
     this.isInitialized = false;
     this.writeQueue = {}; // Map to queue concurrent writes for each file type
   }
@@ -44,7 +47,10 @@ class JSONDatabase {
         adminPin: process.env.ADMIN_PIN || 'Liran!192837',
         nextActiveWarmupAt: '',
         nextActiveWarmupTargetPhone: '',
-        nextActiveWarmupTargetName: ''
+        nextActiveWarmupTargetName: '',
+        leaderboardRetentionDays: 3,
+        leaderboardMinVotesToKeep: 3,
+        leaderboardTopNAlwaysKept: 10
       });
 
       // Initialize Contacts
@@ -55,6 +61,10 @@ class JSONDatabase {
 
       // Initialize Stats
       this.stats = await this._loadOrInitFile('stats.json', {});
+
+      // Initialize Chats (leaderboard) and Votes
+      this.chats = await this._loadOrInitFile('chats.json', []);
+      this.votes = await this._loadOrInitFile('votes.json', []);
 
       this.isInitialized = true;
       console.log('JSON Database successfully initialized.');
@@ -239,6 +249,165 @@ class JSONDatabase {
 
   getStatsSummary() {
     return { ...this.stats };
+  }
+
+  // ---- Leaderboard chats operations ----
+
+  // Public-facing serializer: explicit allow-list so contactPhone / internal
+  // fields can never leak through a route that forgets to filter.
+  toPublicChat(chat) {
+    return {
+      id: chat.id,
+      displayAlias: chat.displayAlias,
+      messages: chat.messages,
+      voteCount: chat.voteCount
+    };
+  }
+
+  // All chats, unfiltered (admin use only).
+  getAllChats() {
+    return [...this.chats];
+  }
+
+  // Published, non-archived chats for the public leaderboard.
+  getPublishedChats() {
+    return this.chats
+      .filter(c => c.status === 'published')
+      .map(c => this.toPublicChat(c));
+  }
+
+  getChatById(id) {
+    return this.chats.find(c => c.id === id) || null;
+  }
+
+  async addChat({ contactPhone, displayAlias, messages }) {
+    if (!contactPhone) {
+      throw new Error('contactPhone is required');
+    }
+    const newChat = {
+      id: crypto.randomUUID(),
+      contactPhone,
+      displayAlias: displayAlias || `משתתף #${this.chats.length + 1}`,
+      messages: Array.isArray(messages) ? messages : [],
+      consentStatus: 'pending', // 'pending' | 'approved' | 'rejected'
+      status: 'draft', // 'draft' | 'published' | 'archived'
+      createdAt: new Date().toISOString(),
+      publishedAt: null,
+      voteCount: 0
+    };
+    this.chats.push(newChat);
+    await this._saveFile('chats.json', this.chats);
+    return newChat;
+  }
+
+  // Internal, unrestricted field merge - used by updateChat's allow-listed
+  // wrapper below AND by the guarded mutators (setConsentStatus/publishChat/
+  // archiveChat) that need to touch status/consentStatus/publishedAt after
+  // already enforcing their own rules.
+  async _setChatFields(id, fields) {
+    const idx = this.chats.findIndex(c => c.id === id);
+    if (idx === -1) {
+      throw new Error(`Chat not found: ${id}`);
+    }
+    this.chats[idx] = { ...this.chats[idx], ...fields };
+    await this._saveFile('chats.json', this.chats);
+    return this.chats[idx];
+  }
+
+  // Content-only allow-list for the generic admin edit route.
+  // status/consentStatus/publishedAt/voteCount must go through their
+  // dedicated mutators so a generic edit can never bypass the consent gate
+  // and push a real person's chat public without approval.
+  async updateChat(id, updates) {
+    const { contactPhone, displayAlias, messages } = updates;
+    const safeUpdates = {};
+    if (contactPhone !== undefined) safeUpdates.contactPhone = contactPhone;
+    if (displayAlias !== undefined) safeUpdates.displayAlias = displayAlias;
+    if (messages !== undefined) safeUpdates.messages = messages;
+    return this._setChatFields(id, safeUpdates);
+  }
+
+  async setConsentStatus(id, consentStatus) {
+    if (!['pending', 'approved', 'rejected'].includes(consentStatus)) {
+      throw new Error(`Invalid consentStatus: ${consentStatus}`);
+    }
+    return this._setChatFields(id, { consentStatus });
+  }
+
+  async publishChat(id) {
+    const chat = this.getChatById(id);
+    if (!chat) {
+      throw new Error(`Chat not found: ${id}`);
+    }
+    if (chat.consentStatus !== 'approved') {
+      throw new Error('Chat cannot be published without approved consent');
+    }
+    return this._setChatFields(id, { status: 'published', publishedAt: new Date().toISOString() });
+  }
+
+  // Soft-delete: the chat and its raw content are kept on disk, just hidden
+  // from the public leaderboard. Never remove rows from chats.json here.
+  async archiveChat(id) {
+    return this._setChatFields(id, { status: 'archived' });
+  }
+
+  // Daily sweep: archives published chats past retention that didn't earn
+  // enough votes, unless they're in the current top-N leaderboard.
+  async sweepExpiredChats({ retentionDays, minVotesToKeep, topNAlwaysKept }) {
+    const now = Date.now();
+    const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
+
+    const publishedSortedByVotes = this.chats
+      .filter(c => c.status === 'published')
+      .sort((a, b) => b.voteCount - a.voteCount);
+    const protectedIds = new Set(publishedSortedByVotes.slice(0, topNAlwaysKept).map(c => c.id));
+
+    const archivedIds = [];
+    for (const chat of this.chats) {
+      if (chat.status !== 'published' || !chat.publishedAt) continue;
+      if (protectedIds.has(chat.id)) continue;
+      const age = now - new Date(chat.publishedAt).getTime();
+      if (age >= retentionMs && chat.voteCount < minVotesToKeep) {
+        chat.status = 'archived';
+        archivedIds.push(chat.id);
+      }
+    }
+
+    if (archivedIds.length > 0) {
+      await this._saveFile('chats.json', this.chats);
+    }
+    return archivedIds;
+  }
+
+  // ---- Votes operations ----
+
+  // Synchronous dedup-check + push (no await between them) so two concurrent
+  // requests from the same voter can't both pass the "already voted" check
+  // before either is recorded — Node's single-threaded event loop guarantees
+  // no interleaving as long as nothing here yields control mid-check.
+  async recordVote(chatId, voterId) {
+    const chat = this.getChatById(chatId);
+    if (!chat) {
+      throw new Error(`Chat not found: ${chatId}`);
+    }
+    if (chat.status !== 'published') {
+      throw new Error('Chat is not open for voting');
+    }
+
+    const alreadyVoted = this.votes.some(v => v.chatId === chatId && v.voterId === voterId);
+    if (alreadyVoted) {
+      throw new Error('Already voted for this chat');
+    }
+
+    this.votes.push({ chatId, voterId, createdAt: new Date().toISOString() });
+    chat.voteCount += 1;
+
+    await Promise.all([
+      this._saveFile('votes.json', this.votes),
+      this._saveFile('chats.json', this.chats)
+    ]);
+
+    return { chatId, voteCount: chat.voteCount };
   }
 }
 

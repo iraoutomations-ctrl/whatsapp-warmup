@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import crypto from 'crypto';
+import cookieParser from 'cookie-parser';
+import { rateLimit } from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import db from './database.js';
 import scheduler from './scheduler.js';
@@ -11,8 +14,14 @@ import { generateReply, generateGroupReply } from './gemini.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Only enable if this server actually sits behind a reverse proxy/load
+// balancer that sets X-Forwarded-For — otherwise clients could spoof their
+// IP and dodge the vote rate limiter below.
+// app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 /**
@@ -682,6 +691,139 @@ app.post('/api/test/incoming', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Simulator trigger failed:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// PUBLIC LEADERBOARD (viewer mode) + ADMIN CURATION
+// ----------------------------------------------------
+
+/**
+ * Issues a long-lived, httpOnly voter identity cookie on first visit to the
+ * public leaderboard. Used to dedupe votes (one vote per chat per voter) -
+ * not a strong identity guarantee on its own, paired with the IP-based rate
+ * limiter below against casual abuse.
+ */
+function voterIdentity(req, res, next) {
+  let voterId = req.cookies?.voterId;
+  if (!voterId) {
+    voterId = crypto.randomUUID();
+    res.cookie('voterId', voterId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 365 * 24 * 60 * 60 * 1000
+    });
+  }
+  req.voterId = voterId;
+  next();
+}
+
+const voteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many votes, slow down and try again in a minute.' }
+});
+
+/**
+ * Public: list published leaderboard chats. Only ever returns fields
+ * filtered through db.toPublicChat() - never contactPhone or other
+ * internal fields.
+ */
+app.get('/api/public/chats', (req, res) => {
+  res.json(db.getPublishedChats());
+});
+
+/**
+ * Public: cast a vote for a chat. One vote per (chatId, voterId).
+ */
+app.post('/api/public/vote', voterIdentity, voteLimiter, async (req, res) => {
+  try {
+    const { chatId } = req.body;
+    if (!chatId) {
+      return res.status(400).json({ error: 'chatId is required' });
+    }
+    const result = await db.recordVote(chatId, req.voterId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const status = err.message === 'Already voted for this chat' ? 409
+      : err.message.startsWith('Chat not found') ? 404
+      : 400;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin: list all chats regardless of status (draft/published/archived).
+ */
+app.get('/api/admin/chats', requireAdmin, (req, res) => {
+  res.json(db.getAllChats());
+});
+
+/**
+ * Admin: add a new candidate chat for the leaderboard (starts as
+ * draft + consentStatus 'pending' - must be explicitly approved before
+ * it can be published).
+ */
+app.post('/api/admin/chats', requireAdmin, async (req, res) => {
+  try {
+    const { contactPhone, displayAlias, messages } = req.body;
+    const newChat = await db.addChat({ contactPhone, displayAlias, messages });
+    res.json({ success: true, chat: newChat });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin: edit chat content/alias before publishing.
+ */
+app.put('/api/admin/chats/:id', requireAdmin, async (req, res) => {
+  try {
+    const updated = await db.updateChat(req.params.id, req.body);
+    res.json({ success: true, chat: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin: record explicit consent decision for a chat's real-contact content.
+ */
+app.post('/api/admin/chats/:id/consent', requireAdmin, async (req, res) => {
+  try {
+    const updated = await db.setConsentStatus(req.params.id, req.body.consentStatus);
+    res.json({ success: true, chat: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin: publish an approved chat to the public leaderboard. Starts the
+ * retention clock (publishedAt).
+ */
+app.post('/api/admin/chats/:id/publish', requireAdmin, async (req, res) => {
+  try {
+    const updated = await db.publishChat(req.params.id);
+    res.json({ success: true, chat: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin: archive (soft-delete) a chat - hides it from the public
+ * leaderboard without removing it from disk.
+ */
+app.post('/api/admin/chats/:id/archive', requireAdmin, async (req, res) => {
+  try {
+    const updated = await db.archiveChat(req.params.id);
+    res.json({ success: true, chat: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

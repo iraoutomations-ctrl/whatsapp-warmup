@@ -32,10 +32,14 @@ class WarmupScheduler {
     this.dayCheckIntervalId = setInterval(() => {
       this.checkDayProgression();
       this.checkAndPostDailyStatus();
+      this.sweepLeaderboard();
     }, 60 * 60 * 1000);
 
     // Run a quick status check 10 seconds after startup
     setTimeout(() => this.checkAndPostDailyStatus(), 10 * 1000);
+
+    // Run an initial leaderboard retention sweep shortly after startup
+    setTimeout(() => this.sweepLeaderboard(), 15 * 1000);
 
     // Start random spontaneous check-ins (opening WhatsApp without messaging)
     this.scheduleNextSpontaneousCheckIn(true); // First run is 15 seconds for testing
@@ -475,6 +479,27 @@ class WarmupScheduler {
   /**
    * Automatically advances the current warmup day every 24 hours of runtime.
    */
+  /**
+   * Soft-archives published leaderboard chats past their retention window
+   * that didn't earn enough votes (and aren't in the current top-N).
+   * Never deletes rows from chats.json - see database.js sweepExpiredChats.
+   */
+  async sweepLeaderboard() {
+    try {
+      const config = getConfig();
+      const archivedIds = await db.sweepExpiredChats({
+        retentionDays: config.leaderboardRetentionDays,
+        minVotesToKeep: config.leaderboardMinVotesToKeep,
+        topNAlwaysKept: config.leaderboardTopNAlwaysKept
+      });
+      if (archivedIds.length > 0) {
+        await db.addLog('info', `Leaderboard sweep archived ${archivedIds.length} chat(s) past retention.`);
+      }
+    } catch (err) {
+      console.error('Leaderboard sweep failed:', err);
+    }
+  }
+
   async checkDayProgression() {
     const settings = db.getSettings();
     const lastDayUpdate = settings.lastDayUpdateAt;

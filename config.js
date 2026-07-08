@@ -46,7 +46,12 @@ export function getConfig() {
     // Scheduled warmup info
     nextActiveWarmupAt: dbSettings.nextActiveWarmupAt || '',
     nextActiveWarmupTargetPhone: dbSettings.nextActiveWarmupTargetPhone || '',
-    nextActiveWarmupTargetName: dbSettings.nextActiveWarmupTargetName || ''
+    nextActiveWarmupTargetName: dbSettings.nextActiveWarmupTargetName || '',
+
+    // Public leaderboard retention rules
+    leaderboardRetentionDays: dbSettings.leaderboardRetentionDays !== undefined ? Number(dbSettings.leaderboardRetentionDays) : 3,
+    leaderboardMinVotesToKeep: dbSettings.leaderboardMinVotesToKeep !== undefined ? Number(dbSettings.leaderboardMinVotesToKeep) : 3,
+    leaderboardTopNAlwaysKept: dbSettings.leaderboardTopNAlwaysKept !== undefined ? Number(dbSettings.leaderboardTopNAlwaysKept) : 10
   };
 }
 
