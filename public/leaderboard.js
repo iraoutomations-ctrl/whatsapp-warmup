@@ -192,15 +192,22 @@ function wireLikeButtons(container) {
   });
 }
 
+const FULL_GRID_PAGE_SIZE = 9;
+let fullGridVisibleCount = FULL_GRID_PAGE_SIZE;
+
 function renderFeed(chats) {
   const grid = document.getElementById('chat-grid');
+  const loadMoreBtn = document.getElementById('btn-load-more');
   if (chats.length === 0) {
     grid.innerHTML = '<div class="empty-feed">עוד אין צ\'אטים בלידרבורד - תהיה הראשון לדבר עם נהוראי!</div>';
+    loadMoreBtn.style.display = 'none';
     return;
   }
   const likedSet = getLikedSet();
-  grid.innerHTML = chats.map((chat, idx) => renderChatCard(chat, idx, likedSet)).join('');
+  const visible = chats.slice(0, fullGridVisibleCount);
+  grid.innerHTML = visible.map((chat, idx) => renderChatCard(chat, idx, likedSet)).join('');
   wireLikeButtons(grid);
+  loadMoreBtn.style.display = chats.length > fullGridVisibleCount ? '' : 'none';
 }
 
 function renderCarousel(chats) {
@@ -246,13 +253,30 @@ async function castLike(btn) {
   }
 }
 
-// ---------- "Show all chats" button - scrolls to the full grid ----------
+// ---------- "Show all chats" button - reveals the full grid on demand
+// instead of dumping it on the page by default (nobody reads a wall of
+// dozens of chats sitting there unasked for) ----------
 
 function setupShowAllButton() {
   const btn = document.getElementById('btn-show-all');
+  const section = document.getElementById('full-grid-section');
+  if (!btn || !section) return;
+
+  btn.addEventListener('click', () => {
+    const revealed = section.classList.toggle('revealed');
+    btn.textContent = revealed ? 'להסתיר את הצ\'אטים ⬆️' : 'לראות את כל הצ\'אטים של נהוראי ⬇️';
+    if (revealed) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+}
+
+function setupLoadMoreButton() {
+  const btn = document.getElementById('btn-load-more');
   if (!btn) return;
   btn.addEventListener('click', () => {
-    document.getElementById('chat-grid-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    fullGridVisibleCount += FULL_GRID_PAGE_SIZE;
+    renderFeed(latestChats);
   });
 }
 
@@ -390,4 +414,5 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDocsTabs();
   setupSignupFlow();
   setupShowAllButton();
+  setupLoadMoreButton();
 });
