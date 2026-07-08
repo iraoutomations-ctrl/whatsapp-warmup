@@ -516,7 +516,7 @@ function updateContactsUI() {
   if (contactsList.length === 0) {
     const emptyHtml = `
       <tr>
-        <td colspan="7" class="text-center text-muted italic">טרם הוגדרו אנשי קשר מודרכים.</td>
+        <td colspan="8" class="text-center text-muted italic">טרם הוגדרו אנשי קשר מודרכים.</td>
       </tr>
     `;
     if (contactsTableBody.innerHTML !== emptyHtml) contactsTableBody.innerHTML = emptyHtml;
@@ -539,6 +539,12 @@ function updateContactsUI() {
         <td>
           <label class="toggle-switch">
             <input type="checkbox" ${contact.enabled ? 'checked' : ''} onchange="toggleContact('${contact.phone}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td>
+        <td title="${contact.leaderboardConsent ? `הסכים כ-"${escapeHtml(contact.leaderboardDisplayAlias || '')}"` : 'לא הסכים ללידרבורד'}">
+          <label class="toggle-switch">
+            <input type="checkbox" ${contact.leaderboardConsent ? 'checked' : ''} onchange="toggleLeaderboardConsent('${contact.phone}', this.checked)">
             <span class="slider"></span>
           </label>
         </td>
@@ -719,6 +725,44 @@ window.toggleContact = async function(phone, enabled) {
     await fetchContacts();
   } catch (err) {
     // Restore checkbox state
+    await fetchContacts();
+  }
+};
+
+// Manual admin override: grants/revokes leaderboard consent on behalf of an
+// existing guided contact who agreed to this outside the public signup flow
+// (e.g. verbally). Normally consent only comes from the self-serve signup
+// form - this exists as an explicit, admin-initiated exception to that rule.
+window.toggleLeaderboardConsent = async function(phone, enabled) {
+  try {
+    if (enabled) {
+      const contact = contactsList.find(c => c.phone === phone);
+      const alias = prompt(
+        'איזה שם תצוגה יוצג עבורו/ה בלידרבורד הציבורי? (ודא/י שיש הסכמה מפורשת מהאדם עצמו)',
+        contact?.leaderboardDisplayAlias || contact?.name || ''
+      );
+      if (!alias || !alias.trim()) {
+        await fetchContacts(); // Cancelled/empty - revert the checkbox
+        return;
+      }
+      await fetchAPI(`/api/contacts/${phone}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          leaderboardConsent: true,
+          leaderboardDisplayAlias: alias.trim(),
+          leaderboardConsentAt: new Date().toISOString()
+        })
+      });
+      showNotification('הסכמת לידרבורד הופעלה עבור איש הקשר.', 'success');
+    } else {
+      await fetchAPI(`/api/contacts/${phone}`, {
+        method: 'PUT',
+        body: JSON.stringify({ leaderboardConsent: false })
+      });
+      showNotification('הסכמת לידרבורד בוטלה עבור איש הקשר.', 'success');
+    }
+    await fetchContacts();
+  } catch (err) {
     await fetchContacts();
   }
 };
