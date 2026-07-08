@@ -2,7 +2,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import db from './database.js';
-import { getConfig, isNightTime, isWeekend, getDailyQuota, getIsraelTime } from './config.js';
+import { getConfig, isNightTime, isWeekend, getDailyQuota, getIsraelTime, computeDynamicContactCap } from './config.js';
 import { generateStarter, generateReply, generateStatusText, generateStatusCaption, generateImagePrompt } from './gemini.js';
 import { sendMessage, sendStatusText, sendStatusImage, sendStatus, markRead, sendReaction, sendTypingState, handleLimitStop } from './evolution.js';
 
@@ -276,22 +276,9 @@ class WarmupScheduler {
           return;
         }
 
-        const todayContactLogs = db.getLogs().filter(log =>
-          log.phone === item.phone &&
-          (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
-          log.timestamp && log.timestamp.startsWith(todayStr)
-        );
-        const baseCap = config.maxRepliesPerContactPerDay || 4;
-        const hashStr = item.phone + todayStr;
-        let hash = 0;
-        for (let i = 0; i < hashStr.length; i++) {
-          hash = (hash << 5) - hash + hashStr.charCodeAt(i);
-        }
-        const variance = (Math.abs(hash) % 3) - 1;
-        const dynamicMaxReplies = Math.max(2, baseCap + variance);
-
-        if (todayContactLogs.length >= dynamicMaxReplies) {
-          await handleLimitStop(item.phone, item.remoteJid, item.msgKey, item.contactName, `Conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies})`);
+        const contactCap = computeDynamicContactCap(item.phone, config);
+        if (contactCap.reached) {
+          await handleLimitStop(item.phone, item.remoteJid, item.msgKey, item.contactName, `Conversation depth reached (${contactCap.count}/${contactCap.cap})`);
           return;
         }
 
@@ -410,22 +397,9 @@ class WarmupScheduler {
               return;
             }
 
-            const todayContactLogs = db.getLogs().filter(log =>
-              log.phone === reply.phone &&
-              (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
-              log.timestamp && log.timestamp.startsWith(todayStr)
-            );
-            const baseCap = config.maxRepliesPerContactPerDay || 4;
-            const hashStr = reply.phone + todayStr;
-            let hash = 0;
-            for (let i = 0; i < hashStr.length; i++) {
-              hash = (hash << 5) - hash + hashStr.charCodeAt(i);
-            }
-            const variance = (Math.abs(hash) % 3) - 1;
-            const dynamicMaxReplies = Math.max(2, baseCap + variance);
-
-            if (todayContactLogs.length >= dynamicMaxReplies) {
-              await handleLimitStop(reply.phone, reply.remoteJid, reply.msgKey, reply.contactName, `Conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies})`);
+            const contactCap = computeDynamicContactCap(reply.phone, config);
+            if (contactCap.reached) {
+              await handleLimitStop(reply.phone, reply.remoteJid, reply.msgKey, reply.contactName, `Conversation depth reached (${contactCap.count}/${contactCap.cap})`);
               return;
             }
 

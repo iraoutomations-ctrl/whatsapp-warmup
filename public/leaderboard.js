@@ -151,13 +151,25 @@ function heartSvg() {
   return `<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 2 5 5.6 5 8 5 10 6.5 12 9c2-2.5 4-4 6.4-4C22 5 23.6 8.4 22 11.7 19.5 16.4 12 21 12 21z"/></svg>`;
 }
 
+// Live per-contact status, worded in Nehorai's voice - same wording used
+// in the admin kill-switch table (app.js CONTACT_STATUS_BADGE).
+const CONTACT_STATUS_LABEL = {
+  typing: '⌨️ מקליד יא באבא...',
+  quota_reached: '🔴 סגר איתו להיום',
+  sleeping: '😴 ישן, יחזור בבוקר',
+  delayed: '👻 מסנן אותו כרגע',
+  ready: '🟢 פה וזמין, תכתוב מלך'
+};
+
 function renderChatCard(chat, rank, likedSet) {
+  const statusLabel = CONTACT_STATUS_LABEL[chat.contactStatus] || CONTACT_STATUS_LABEL.ready;
   return `
     <div class="chat-card" data-chat-id="${escapeHtml(chat.id)}">
       <div class="chat-card-head">
         <span class="alias">${escapeHtml(chat.displayAlias)}</span>
         <span class="rank">${medalFor(rank)}</span>
       </div>
+      <div class="chat-card-status">${statusLabel}</div>
       <div class="phone-body">${renderBubbles(chat.messages)}</div>
       <div class="chat-card-foot">
         <span class="vote-count">${chat.voteCount} לייקים</span>

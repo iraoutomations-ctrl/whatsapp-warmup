@@ -44,6 +44,11 @@
       </div>
     </header>
 
+    <!-- Persistent banner: shown whenever Nehorai has used up his global daily quota -->
+    <div class="daily-quota-banner" id="daily-quota-banner" style="display:none;">
+      ⚠️ נהוראי סגר עסק להיום - המכסה היומית נגמרה, לא יוזם ולא עונה יותר עד מחר.
+    </div>
+
     <!-- Metrics Grid -->
     <section class="metrics-grid">
       <!-- Warmup Progress -->
@@ -477,7 +482,8 @@
             <thead>
               <tr>
                 <th>שם תצוגה</th>
-                <th>סטטוס</th>
+                <th>סטטוס פרסום</th>
+                <th>נהוראי מולו עכשיו</th>
                 <th>הודעות</th>
                 <th>הצבעות</th>
                 <th>פורסם</th>
@@ -485,7 +491,7 @@
               </tr>
             </thead>
             <tbody id="leaderboard-table-body">
-              <tr><td colspan="6" class="text-center">טוען צ'אטים...</td></tr>
+              <tr><td colspan="7" class="text-center">טוען צ'אטים...</td></tr>
             </tbody>
           </table>
         </div>

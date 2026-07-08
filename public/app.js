@@ -340,7 +340,13 @@ function updateStatusUI() {
   const config = systemStatus.config;
   const stats = systemStatus.stats;
   const isNight = systemStatus.isNight;
-  
+
+  // 0. Persistent daily-quota banner
+  const quotaBanner = document.getElementById('daily-quota-banner');
+  if (quotaBanner) {
+    quotaBanner.style.display = systemStatus.dailyQuotaReached ? '' : 'none';
+  }
+
   // 1. Status Pill
   const dot = systemStatusPill.querySelector('.dot');
   const label = systemStatusPill.querySelector('.label');
@@ -569,6 +575,16 @@ const STATUS_BADGE = {
   archived: { label: 'הוסר מהאתר', color: '#f87171' }
 };
 
+// Live per-contact status, worded in Nehorai's voice (never plain/official
+// Hebrew) - same wording used on the public leaderboard page.
+const CONTACT_STATUS_BADGE = {
+  typing: { label: '⌨️ מקליד יא באבא...', color: '#22d3ee' },
+  quota_reached: { label: '🔴 סגר איתו להיום', color: '#f87171' },
+  sleeping: { label: '😴 ישן, יחזור בבוקר', color: '#9ca3af' },
+  delayed: { label: '👻 מסנן אותו כרגע', color: '#f59e0b' },
+  ready: { label: '🟢 פה וזמין, תכתוב מלך', color: '#34d399' }
+};
+
 // Update Leaderboard Kill Switch table - chats publish themselves
 // automatically; the only admin action here is emergency removal.
 function updateLeaderboardUI() {
@@ -576,7 +592,7 @@ function updateLeaderboardUI() {
   if (!tbody) return;
 
   if (leaderboardChats.length === 0) {
-    const emptyHtml = `<tr><td colspan="6" class="text-center text-muted italic">אין עדיין צ'אטים בלידרבורד.</td></tr>`;
+    const emptyHtml = `<tr><td colspan="7" class="text-center text-muted italic">אין עדיין צ'אטים בלידרבורד.</td></tr>`;
     if (tbody.innerHTML !== emptyHtml) tbody.innerHTML = emptyHtml;
     return;
   }
@@ -584,11 +600,13 @@ function updateLeaderboardUI() {
   let html = '';
   leaderboardChats.forEach(chat => {
     const badge = STATUS_BADGE[chat.status] || { label: chat.status, color: '#9ca3af' };
+    const contactBadge = CONTACT_STATUS_BADGE[chat.contactStatus] || CONTACT_STATUS_BADGE.ready;
     const published = chat.publishedAt ? new Date(chat.publishedAt).toLocaleString() : '-';
     html += `
       <tr>
         <td><strong>${escapeHtml(chat.displayAlias)}</strong></td>
         <td><span style="color: ${badge.color}">●</span> ${badge.label}</td>
+        <td><span style="color: ${contactBadge.color}">${contactBadge.label}</span></td>
         <td>${chat.messages.length}</td>
         <td>${chat.voteCount}</td>
         <td><small>${published}</small></td>

@@ -166,7 +166,12 @@ export async function sendMessage(number, text, simulateTyping = true) {
   if (simulateTyping) {
     // Determine typing delay based on message length (approx. 50ms per character, min 2s, max 6s)
     const delay = Math.min(Math.max(processedText.length * 50, 2000), 6000);
-    await sendTypingState(cleanNumber, 'composing', delay);
+    db.markTyping(cleanNumber);
+    try {
+      await sendTypingState(cleanNumber, 'composing', delay);
+    } finally {
+      db.clearTyping(cleanNumber);
+    }
   }
 
   console.log(`Sending message to ${cleanNumber}: "${processedText}"`);

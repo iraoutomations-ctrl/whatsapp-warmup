@@ -7,7 +7,7 @@ import { rateLimit } from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import db from './database.js';
 import scheduler from './scheduler.js';
-import { getConfig, isNightTime, getDailyQuota, getIsraelTime } from './config.js';
+import { getConfig, isNightTime, getDailyQuota, getIsraelTime, computeDynamicContactCap, getContactStatus, isDailyQuotaReached } from './config.js';
 import { sendMessage, markRead, sendReaction, sendTypingState, handleLimitStop } from './evolution.js';
 import { generateReply, generateGroupReply } from './gemini.js';
 
@@ -172,22 +172,9 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
     }
 
     // Check per-contact daily conversation depth cap with human variance (-1, 0, +1 around base limit)
-    const todayContactLogs = db.getLogs().filter(log =>
-      log.phone === phone &&
-      (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
-      log.timestamp && log.timestamp.startsWith(todayStr)
-    );
-    const baseCap = config.maxRepliesPerContactPerDay || 4;
-    const hashStr = phone + todayStr;
-    let hash = 0;
-    for (let i = 0; i < hashStr.length; i++) {
-      hash = (hash << 5) - hash + hashStr.charCodeAt(i);
-    }
-    const variance = (Math.abs(hash) % 3) - 1; // Returns -1, 0, or +1
-    const dynamicMaxReplies = Math.max(2, baseCap + variance);
-
-    if (todayContactLogs.length >= dynamicMaxReplies) {
-      await handleLimitStop(phone, remoteJid, data.key, contact.name, `Conversation depth reached (${todayContactLogs.length}/${dynamicMaxReplies})`);
+    const contactCap = computeDynamicContactCap(phone, config);
+    if (contactCap.reached) {
+      await handleLimitStop(phone, remoteJid, data.key, contact.name, `Conversation depth reached (${contactCap.count}/${contactCap.cap})`);
       return res.json({ status: 'success', detail: 'Max daily contact depth reached' });
     }
 
@@ -326,6 +313,7 @@ app.get('/api/status', (req, res) => {
     nightQueueLength: (settings.nightQueue || []).length,
     delayedReplies: settings.delayedReplies || [],
     nightQueue: settings.nightQueue || [],
+    dailyQuotaReached: isDailyQuotaReached(),
     isNight: isNightTime()
   });
 });
@@ -730,10 +718,11 @@ const voteLimiter = rateLimit({
 /**
  * Public: list published leaderboard chats. Only ever returns fields
  * filtered through db.toPublicChat() - never contactPhone or other
- * internal fields.
+ * internal fields. contactStatus is computed here (server.js) and passed
+ * into the db layer so database.js never needs to import config.js.
  */
 app.get('/api/public/chats', (req, res) => {
-  res.json(db.getPublishedChats());
+  res.json(db.getPublishedChats(getContactStatus));
 });
 
 /**
@@ -815,10 +804,16 @@ app.post('/api/public/signup', signupLimiter, async (req, res) => {
 });
 
 /**
- * Admin: list all chats regardless of status (draft/published/archived).
+ * Admin: list all chats regardless of status (draft/published/archived),
+ * each annotated with the live contactStatus (admin already sees
+ * contactPhone here, so no serialization concerns).
  */
 app.get('/api/admin/chats', requireAdmin, (req, res) => {
-  res.json(db.getAllChats());
+  const chats = db.getAllChats().map(chat => ({
+    ...chat,
+    contactStatus: getContactStatus(chat.contactPhone)
+  }));
+  res.json(chats);
 });
 
 /**

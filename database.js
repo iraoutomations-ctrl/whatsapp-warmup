@@ -27,7 +27,17 @@ class JSONDatabase {
     this.votes = [];
     this.isInitialized = false;
     this.writeQueue = {}; // Map to queue concurrent writes for each file type
+
+    // Live "is typing right now" indicator - deliberately in-memory only,
+    // never persisted. It's a multi-second transient flag; writing it to
+    // disk would be pure write-amplification for something that doesn't
+    // need to survive a restart.
+    this.typingPhones = new Set();
   }
+
+  markTyping(phone) { this.typingPhones.add(phone); }
+  clearTyping(phone) { this.typingPhones.delete(phone); }
+  isTyping(phone) { return this.typingPhones.has(phone); }
 
   async init() {
     if (this.isInitialized) return;
@@ -354,12 +364,17 @@ class JSONDatabase {
 
   // Public-facing serializer: explicit allow-list so contactPhone / internal
   // fields can never leak through a route that forgets to filter.
-  toPublicChat(chat) {
+  // contactStatus is pre-computed by the caller (server.js, via
+  // config.js's getContactStatus) and passed in - this class never imports
+  // config.js itself to avoid a circular import with config.js's own
+  // `import db from './database.js'`.
+  toPublicChat(chat, contactStatus) {
     return {
       id: chat.id,
       displayAlias: chat.displayAlias,
       messages: chat.messages,
-      voteCount: chat.voteCount
+      voteCount: chat.voteCount,
+      contactStatus
     };
   }
 
@@ -368,11 +383,13 @@ class JSONDatabase {
     return [...this.chats];
   }
 
-  // Published, non-archived chats for the public leaderboard.
-  getPublishedChats() {
+  // Published, non-archived chats for the public leaderboard. getStatusFn,
+  // if provided, is called with each chat's contactPhone and its return
+  // value attached as contactStatus on the public-safe serialized chat.
+  getPublishedChats(getStatusFn) {
     return this.chats
       .filter(c => c.status === 'published')
-      .map(c => this.toPublicChat(c));
+      .map(c => this.toPublicChat(c, getStatusFn ? getStatusFn(c.contactPhone) : undefined));
   }
 
   getChatById(id) {

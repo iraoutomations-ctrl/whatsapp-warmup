@@ -156,10 +156,57 @@ export function isWeekend() {
 export function getDailyQuota() {
   const config = getConfig();
   const baseLimit = config.currentDay <= 7 ? config.week1Limit : config.week2Limit;
-  
+
   // If weekend, cut daily limits in half
   if (isWeekend()) {
     return Math.floor(baseLimit / 2);
   }
   return baseLimit;
+}
+
+// Shared dynamic per-contact daily reply cap (base limit ± a small
+// per-phone-per-day hash variance). This used to be copy-pasted inline in
+// server.js and twice in scheduler.js - extracted here so contact-status
+// reporting can never drift from the actual enforcement logic.
+export function computeDynamicContactCap(phone, config) {
+  const todayStr = db.getTodayDateString();
+  const todayContactLogs = db.getLogs().filter(log =>
+    log.phone === phone &&
+    (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
+    log.timestamp && log.timestamp.startsWith(todayStr)
+  );
+  const baseCap = config.maxRepliesPerContactPerDay || 4;
+  const hashStr = phone + todayStr;
+  let hash = 0;
+  for (let i = 0; i < hashStr.length; i++) {
+    hash = (hash << 5) - hash + hashStr.charCodeAt(i);
+  }
+  const variance = (Math.abs(hash) % 3) - 1; // -1, 0, or +1
+  const dynamicMaxReplies = Math.max(2, baseCap + variance);
+  return { count: todayContactLogs.length, cap: dynamicMaxReplies, reached: todayContactLogs.length >= dynamicMaxReplies };
+}
+
+// Has Nehorai hit his own global daily send quota (not per-contact)?
+export function isDailyQuotaReached() {
+  const stats = db.getStatsForDate(db.getTodayDateString());
+  return stats.outgoing >= getDailyQuota();
+}
+
+// Live per-contact status for the leaderboard UI (public + admin).
+// Priority: typing (transient, in-memory) > today's per-contact cap reached
+// > global night rest > busy-ghosting delay queue > ready. Returns a plain
+// key - the actual Nehorai-voice wording lives in the front-end.
+export function getContactStatus(phone) {
+  if (db.isTyping(phone)) return 'typing';
+
+  const config = getConfig();
+  if (computeDynamicContactCap(phone, config).reached) return 'quota_reached';
+
+  if (config.nightRestEnabled && isNightTime()) return 'sleeping';
+
+  const settings = db.getSettings();
+  const delayedReplies = settings.delayedReplies || [];
+  if (delayedReplies.some(r => r.phone === phone)) return 'delayed';
+
+  return 'ready';
 }

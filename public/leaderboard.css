@@ -295,6 +295,14 @@ body.shake { animation: screenShake 0.5s ease-in-out; }
   font-size: 1.1rem;
 }
 
+.chat-card-status {
+  padding: 4px 14px;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-dim);
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .phone-body {
   background: var(--wa-bg);
   padding: 12px;
