@@ -3,7 +3,9 @@
 // with the dashboard in app.js/index.html).
 
 const POLL_INTERVAL_MS = 8000;
-const VOTED_STORAGE_KEY = 'nehoraiVotedChatIds';
+const LIKED_STORAGE_KEY = 'nehoraiLikedChatIds';
+
+let latestChats = [];
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -11,18 +13,18 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function getVotedSet() {
+function getLikedSet() {
   try {
-    return new Set(JSON.parse(localStorage.getItem(VOTED_STORAGE_KEY) || '[]'));
+    return new Set(JSON.parse(localStorage.getItem(LIKED_STORAGE_KEY) || '[]'));
   } catch (_) {
     return new Set();
   }
 }
 
-function markVoted(chatId) {
-  const set = getVotedSet();
+function markLiked(chatId) {
+  const set = getLikedSet();
   set.add(chatId);
-  localStorage.setItem(VOTED_STORAGE_KEY, JSON.stringify([...set]));
+  localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify([...set]));
 }
 
 // ---------- Status widget (night rest / weekend "vibe" phrases) ----------
@@ -37,7 +39,11 @@ const STATUS_PHRASES = {
   thursdayEvening: ['🔪 נהוראי בסטטוס: חמישי דוקר (בדרך למועדון, עונה בדיליי)'],
   friday: ['✋ נהוראי בסטטוס: שישי נודר (Weekend Chill פעיל, המכסה ירדה בחצי)'],
   saturday: ['🕯️ נהוראי בסטטוס: שבת שומר (ניתוק לוגיסטי מלא, הבוט ישן עד מוצ"ש)'],
-  normal: ['🟢 נהוראי ער וזמין, תכתבו לו']
+  normal: [
+    '🟢 נהוראי ער וזמין, תכתבו לו',
+    '🟢 נהוראי משועמם, זה הזמן לתפוס אותו',
+    '🟢 נהוראי פה, בואו נראה מי מעז'
+  ]
 };
 
 function pickStatusCategory(botStatus) {
@@ -71,14 +77,40 @@ function populateTopicSelect(topics) {
     .join('');
 }
 
+// ---------- "Who's next" widget - DECORATIVE ONLY.
+// Never wired to the real private scheduling data (nextActiveWarmupTargetName
+// etc.) - that's a real, likely non-consenting contact's name. Only draws
+// from displayAlias values already public on this exact page. ----------
+
+const NEXT_TARGET_PHRASES = [
+  alias => `👀 נהוראי מסתכל על ${alias} ומחליט אם בא לו לענות`,
+  alias => `📤 יש סיכוי טוב ש-${alias} מקבל הודעה מנהוראי בקרוב`,
+  alias => `🎯 נהוראי מתכנן לזרוק הודעה ל${alias} כל רגע`,
+  () => `🔍 נהוראי סורק את הרשימה, מחפש על מי לזרוק כסא היום`
+];
+
+function updateNextTargetWidget() {
+  const el = document.getElementById('next-target-text');
+  if (!el) return;
+  const aliases = latestChats.map(c => c.displayAlias).filter(Boolean);
+  const phraseFn = NEXT_TARGET_PHRASES[Math.floor(Math.random() * NEXT_TARGET_PHRASES.length)];
+  if (aliases.length === 0) {
+    el.textContent = '🔍 נהוראי מחפש על מי לזרוק כסא היום';
+    return;
+  }
+  const alias = aliases[Math.floor(Math.random() * aliases.length)];
+  el.textContent = phraseFn(alias);
+}
+
 // ---------- Decorative "live" telemetry ticker (NOT real logs - see plan) ----------
 
 const TELEMETRY_LINES = [
-  '⚡ המערכת מחשבת אורך קללה... משדרת ל-Meta מצב הקלדה (Composing State) של 2.4 שניות.',
-  '🔵 נשלח סיגנל Mark Read – וי כחול טבעי הופעל בהצלחה.',
-  '⏱️ אלגוריתם Busy Ghosting הופעל: מעכב תגובה ב-7 דקות כדי לא להיראות רובוטי.',
-  '📡 מדמה מצב "מחובר" מול שרתי WhatsApp...',
-  '🧠 מנוע השפה בוחר סלנג מותאם לשעה הזאת...'
+  '⚡ נהוראי מקליד יא באבא... מחשב אורך קללה מדויק.',
+  '🔵 וי כחול טבעי הופעל, תירגע.',
+  '⏱️ Busy Ghosting פעיל: נהוראי מתעכב בכוונה כדי לא להיראות רובוט.',
+  '📡 נהוראי מחובר, מחפש על מי לזרוק כסא כתר.',
+  '🚬 נהוראי הלך להביא קופסה מלברו רד, חוזר עוד שנייה.',
+  '🧠 מנוע השפה בוחר סלנג שכונתי מותאם לשעה הזאת...'
 ];
 
 let telemetryTimer = null;
@@ -115,8 +147,27 @@ function medalFor(rank) {
   return rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : '';
 }
 
-function chairSvg() {
-  return `<svg viewBox="0 0 24 24"><path d="M6 3h12v2H6V3zm0 4h12a2 2 0 0 1 2 2v3h-2v7h-2v-4H8v4H6v-7H4V9a2 2 0 0 1 2-2z"/></svg>`;
+function heartSvg() {
+  return `<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 2 5 5.6 5 8 5 10 6.5 12 9c2-2.5 4-4 6.4-4C22 5 23.6 8.4 22 11.7 19.5 16.4 12 21 12 21z"/></svg>`;
+}
+
+function renderChatCard(chat, rank, likedSet) {
+  return `
+    <div class="chat-card" data-chat-id="${escapeHtml(chat.id)}">
+      <div class="chat-card-head">
+        <span class="alias">${escapeHtml(chat.displayAlias)}</span>
+        <span class="rank">${medalFor(rank)}</span>
+      </div>
+      <div class="phone-body">${renderBubbles(chat.messages)}</div>
+      <div class="chat-card-foot">
+        <span class="vote-count">${chat.voteCount} לייקים</span>
+        <button class="like-btn ${likedSet.has(chat.id) ? 'liked' : ''}" data-chat-id="${escapeHtml(chat.id)}" ${likedSet.has(chat.id) ? 'disabled' : ''}>
+          ${heartSvg()}
+          <span>${likedSet.has(chat.id) ? 'אהבתי!' : 'לייק'}</span>
+        </button>
+      </div>
+    </div>
+  `;
 }
 
 async function loadFeed() {
@@ -124,12 +175,21 @@ async function loadFeed() {
     const res = await fetch('/api/public/chats');
     const chats = await res.json();
     chats.sort((a, b) => b.voteCount - a.voteCount);
+    latestChats = chats;
     renderFeed(chats);
+    renderCarousel(chats);
+    updateNextTargetWidget();
   } catch (err) {
     // Keep whatever was already rendered; a transient poll failure isn't worth
     // wiping the visible feed.
     console.error('Failed to load leaderboard feed', err);
   }
+}
+
+function wireLikeButtons(container) {
+  container.querySelectorAll('.like-btn').forEach(btn => {
+    btn.addEventListener('click', () => castLike(btn));
+  });
 }
 
 function renderFeed(chats) {
@@ -138,52 +198,30 @@ function renderFeed(chats) {
     grid.innerHTML = '<div class="empty-feed">עוד אין צ\'אטים בלידרבורד - תהיה הראשון לדבר עם נהוראי!</div>';
     return;
   }
-  const votedSet = getVotedSet();
-  grid.innerHTML = chats.map((chat, idx) => `
-    <div class="chat-card" data-chat-id="${escapeHtml(chat.id)}">
-      <div class="chat-card-head">
-        <span class="alias">${escapeHtml(chat.displayAlias)}</span>
-        <span class="rank">${medalFor(idx)}</span>
-      </div>
-      <div class="phone-body">${renderBubbles(chat.messages)}</div>
-      <div class="chat-card-foot">
-        <span class="vote-count">${chat.voteCount} הצבעות</span>
-        <button class="vote-btn" data-chat-id="${escapeHtml(chat.id)}" ${votedSet.has(chat.id) ? 'disabled' : ''}>
-          ${chairSvg()}
-          <span>${votedSet.has(chat.id) ? 'הצבעת!' : 'הצבע'}</span>
-        </button>
-      </div>
-    </div>
-  `).join('');
-
-  grid.querySelectorAll('.vote-btn').forEach(btn => {
-    btn.addEventListener('click', () => castVote(btn));
-  });
+  const likedSet = getLikedSet();
+  grid.innerHTML = chats.map((chat, idx) => renderChatCard(chat, idx, likedSet)).join('');
+  wireLikeButtons(grid);
 }
 
-function spawnConfetti(button) {
-  const rect = button.getBoundingClientRect();
-  for (let i = 0; i < 10; i++) {
-    const p = document.createElement('div');
-    p.className = 'confetti-particle';
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 30 + Math.random() * 30;
-    p.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
-    p.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
-    p.style.setProperty('--rot', `${Math.random() * 360}deg`);
-    p.style.left = `${rect.left + rect.width / 2 + window.scrollX}px`;
-    p.style.top = `${rect.top + rect.height / 2 + window.scrollY}px`;
-    document.body.appendChild(p);
-    setTimeout(() => p.remove(), 650);
+function renderCarousel(chats) {
+  const carousel = document.getElementById('top-carousel');
+  if (!carousel) return;
+  const top = chats.slice(0, 5);
+  if (top.length === 0) {
+    carousel.innerHTML = '<div class="empty-feed">עוד אין קרעים להראות</div>';
+    return;
   }
+  const likedSet = getLikedSet();
+  carousel.innerHTML = top.map((chat, idx) => renderChatCard(chat, idx, likedSet)).join('');
+  wireLikeButtons(carousel);
 }
 
-async function castVote(btn) {
+async function castLike(btn) {
   const chatId = btn.dataset.chatId;
   if (btn.disabled) return;
   btn.disabled = true;
-  btn.classList.add('bounced');
-  spawnConfetti(btn);
+  btn.classList.add('liked', 'pulsed');
+  setTimeout(() => btn.classList.remove('pulsed'), 350);
 
   try {
     const res = await fetch('/api/public/vote', {
@@ -192,20 +230,30 @@ async function castVote(btn) {
       body: JSON.stringify({ chatId })
     });
     if (res.ok) {
-      markVoted(chatId);
-      btn.querySelector('span').textContent = 'הצבעת!';
+      markLiked(chatId);
+      btn.querySelector('span').textContent = 'אהבתי!';
       loadFeed();
     } else {
-      // Already voted (409) or some other rejection - reflect it as voted
+      // Already liked (409) or some other rejection - reflect it as liked
       // either way since a retry can't succeed for this voter.
       const data = await res.json().catch(() => ({}));
-      if (res.status === 409) markVoted(chatId);
-      btn.querySelector('span').textContent = data.error === undefined ? 'הצבעת!' : 'לא זמין';
+      if (res.status === 409) markLiked(chatId);
+      btn.querySelector('span').textContent = data.error === undefined ? 'אהבתי!' : 'לא זמין';
     }
   } catch (err) {
     btn.disabled = false;
-    btn.classList.remove('bounced');
+    btn.classList.remove('liked');
   }
+}
+
+// ---------- "Show all chats" button - scrolls to the full grid ----------
+
+function setupShowAllButton() {
+  const btn = document.getElementById('btn-show-all');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    document.getElementById('chat-grid-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }
 
 // ---------- Screen shake trigger (chair-throw moment near video end) ----------
@@ -249,15 +297,21 @@ function setupSignupFlow() {
   const modal = document.getElementById('signup-modal');
   const stepGuide = document.getElementById('signup-step-guide');
   const stepForm = document.getElementById('signup-step-form');
+  const stepPostsignup = document.getElementById('signup-step-postsignup');
   const consentCheckbox = document.getElementById('consent-checkbox');
   const continueBtn = document.getElementById('signup-continue');
   const submitBtn = document.getElementById('signup-submit');
   const errorEl = document.getElementById('signup-error');
+  let pendingWaLink = null;
+
+  function showStep(step) {
+    [stepGuide, stepForm, stepPostsignup].forEach(s => { s.style.display = 'none'; });
+    step.style.display = '';
+  }
 
   function openModal() {
     modal.classList.add('open');
-    stepGuide.style.display = '';
-    stepForm.style.display = 'none';
+    showStep(stepGuide);
     consentCheckbox.checked = false;
     continueBtn.disabled = true;
     errorEl.textContent = '';
@@ -266,10 +320,7 @@ function setupSignupFlow() {
 
   document.getElementById('cta-signup-btn').addEventListener('click', openModal);
   document.getElementById('signup-cancel-1').addEventListener('click', closeModal);
-  document.getElementById('signup-back').addEventListener('click', () => {
-    stepForm.style.display = 'none';
-    stepGuide.style.display = '';
-  });
+  document.getElementById('signup-back').addEventListener('click', () => showStep(stepGuide));
 
   consentCheckbox.addEventListener('change', () => {
     continueBtn.disabled = !consentCheckbox.checked;
@@ -277,15 +328,16 @@ function setupSignupFlow() {
 
   continueBtn.addEventListener('click', () => {
     if (!consentCheckbox.checked) return;
-    stepGuide.style.display = 'none';
-    stepForm.style.display = '';
+    showStep(stepForm);
   });
 
   submitBtn.addEventListener('click', async () => {
     errorEl.textContent = '';
     const displayAlias = document.getElementById('alias-input').value.trim();
     const phone = document.getElementById('phone-input').value.trim();
-    const topic = document.getElementById('topic-select').value;
+    const topicCustom = document.getElementById('topic-custom').value.trim();
+    const topicSelect = document.getElementById('topic-select').value;
+    const topic = topicCustom || topicSelect;
     const website = document.getElementById('website-honeypot').value;
 
     if (!displayAlias) {
@@ -312,12 +364,17 @@ function setupSignupFlow() {
         submitBtn.textContent = 'קדימה, תפתח לי וואטסאפ';
         return;
       }
-      window.location.href = data.waLink;
+      pendingWaLink = data.waLink;
+      showStep(stepPostsignup);
     } catch (err) {
       errorEl.textContent = 'משהו השתבש, נסה שוב';
       submitBtn.disabled = false;
       submitBtn.textContent = 'קדימה, תפתח לי וואטסאפ';
     }
+  });
+
+  document.getElementById('signup-go-whatsapp').addEventListener('click', () => {
+    if (pendingWaLink) window.location.href = pendingWaLink;
   });
 }
 
@@ -328,7 +385,9 @@ document.addEventListener('DOMContentLoaded', () => {
   startTelemetryLoop();
   loadFeed();
   setInterval(loadFeed, POLL_INTERVAL_MS);
+  setInterval(updateNextTargetWidget, 6000);
   setupScreenShake();
   setupDocsTabs();
   setupSignupFlow();
+  setupShowAllButton();
 });
