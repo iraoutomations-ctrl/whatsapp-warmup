@@ -476,6 +476,22 @@ class JSONDatabase {
     return this._setChatFields(id, { status: 'archived' });
   }
 
+  // Explicit self-serve opt-out (triggered from the WhatsApp chat itself,
+  // see server.js webhook handler): stops future messages and, since
+  // someone who no longer wants contact almost certainly doesn't want their
+  // past chat staying public either, revokes leaderboard consent and
+  // archives their current chat if they have one.
+  async optOutContact(phone) {
+    const contact = this.contacts.find(c => c.phone === phone);
+    if (contact) {
+      await this.updateContact(phone, { enabled: false, leaderboardConsent: false });
+    }
+    const chat = this.getChatByPhone(phone);
+    if (chat && chat.status !== 'archived') {
+      await this.archiveChat(chat.id);
+    }
+  }
+
   // Daily sweep: archives published chats past retention that didn't earn
   // enough votes, unless they're in the current top-N leaderboard.
   async sweepExpiredChats({ retentionDays, minVotesToKeep, topNAlwaysKept }) {

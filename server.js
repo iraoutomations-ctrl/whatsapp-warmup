@@ -146,6 +146,34 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
       messageCount: contact.messageCount + 1
     });
 
+    // Self-serve opt-out ("תפסיק לכתוב לי" -> confirm "כן תפסיק"). Checked
+    // before warmupEnabled/quota/night/delay so a real person asking to
+    // stop always gets an immediate response no matter what state the bot
+    // is otherwise in. Opportunistically drops stale (>15min unconfirmed)
+    // pending requests from any phone on every incoming message, so no
+    // separate sweep job is needed.
+    const OPT_OUT_CONFIRM_WINDOW_MS = 15 * 60 * 1000;
+    const optOutSettings = db.getSettings();
+    const activePendingOptOuts = (optOutSettings.pendingOptOuts || [])
+      .filter(p => Date.now() - new Date(p.requestedAt).getTime() < OPT_OUT_CONFIRM_WINDOW_MS);
+    const pendingOptOut = activePendingOptOuts.find(p => p.phone === phone);
+
+    if (pendingOptOut) {
+      const isConfirmed = messageText.trim().replace(/[.!?,]/g, '') === 'כן תפסיק';
+      await db.saveSettings({ pendingOptOuts: activePendingOptOuts.filter(p => p.phone !== phone) });
+      if (isConfirmed) {
+        await db.optOutContact(phone);
+        await sendMessage(phone, 'סבבה, מבין. ביי 👋 אם תתגעגע אתה יודע איפה למצוא אותי');
+        await db.addLog('success', `Contact ${contact.name || phone} opted out via chat command.`);
+        return res.json({ status: 'success', detail: 'Contact opted out' });
+      }
+      // Not a confirmation - pending already cleared above, fall through to normal reply handling.
+    } else if (messageText.includes('תפסיק לכתוב לי')) {
+      await db.saveSettings({ pendingOptOuts: [...activePendingOptOuts, { phone, requestedAt: new Date().toISOString() }] });
+      await sendMessage(phone, "רגע רגע יא חבר, אתה רציני? 😢 תכתוב לי 'כן תפסיק' ואני נעלם מהחיים שלך לתמיד");
+      return res.json({ status: 'success', detail: 'Opt-out confirmation requested' });
+    }
+
     const config = getConfig();
     if (!config.warmupEnabled) {
       console.log(`Warmup is disabled. Read receipt will be sent to ${phone} after delay, but reply skipped.`);
