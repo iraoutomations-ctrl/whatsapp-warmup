@@ -1,26 +1,28 @@
 import fs from 'fs/promises';
-import { getConfig } from './config.js';
 import db from './database.js';
 
 /**
- * Helper to make requests to the Evolution API
+ * Helper to make requests to the Evolution API. Every exported function in
+ * this file takes an already-resolved instanceConfig (from
+ * config.js#getConfig(instanceId)) as its first argument instead of calling
+ * getConfig() internally - each WhatsApp number has its own separate
+ * Evolution API deployment (own URL/token/instance name, usually its own
+ * VPS/IP), so there is no single global connection to fall back to anymore.
  */
-async function callEvolutionAPI(endpoint, method, body, throwError = false) {
-  const config = getConfig();
-  
-  if (!config.evolutionUrl || !config.evolutionToken || !config.evolutionInstance) {
-    console.warn(`Evolution API credentials not configured. Skipping API call to: ${endpoint}`);
+async function callEvolutionAPI(instanceConfig, endpoint, method, body, throwError = false) {
+  if (!instanceConfig.evolutionUrl || !instanceConfig.evolutionToken || !instanceConfig.evolutionInstance) {
+    console.warn(`Evolution API credentials not configured for instance "${instanceConfig.label || instanceConfig.id}". Skipping API call to: ${endpoint}`);
     return { success: false, mock: true, message: 'API not configured' };
   }
 
-  const url = `${config.evolutionUrl.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}/${config.evolutionInstance}`;
-  
+  const url = `${instanceConfig.evolutionUrl.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}/${instanceConfig.evolutionInstance}`;
+
   try {
     const response = await fetch(url, {
       method: method,
       headers: {
         'Content-Type': 'application/json',
-        'apikey': config.evolutionToken
+        'apikey': instanceConfig.evolutionToken
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(10000) // 10 seconds timeout
@@ -38,41 +40,42 @@ async function callEvolutionAPI(endpoint, method, body, throwError = false) {
       throw error;
     }
     console.error(`Failed to call Evolution API at ${endpoint}:`, error);
-    await db.addLog('error', `Evolution API failed: ${error.message}`);
+    await db.addLog('error', `Evolution API failed: ${error.message}`, '', '', false, instanceConfig.id);
     return { success: false, error: error.message };
   }
 }
 
 /**
  * Sends a "typing" (composing) state to simulate human latency.
+ * @param {object} instanceConfig - resolved config for the bot number sending this
  * @param {string} number - The phone number (with or without suffix)
  * @param {string} presence - 'composing' | 'recording' | 'paused'
  * @param {number} delayMs - Duration in milliseconds to simulate typing
  */
-export async function sendTypingState(number, presence = 'composing', delayMs = 3000) {
+export async function sendTypingState(instanceConfig, number, presence = 'composing', delayMs = 3000) {
   const isGroup = number.endsWith('@g.us');
   const cleanNumber = isGroup ? number : number.split('@')[0];
   console.log(`Simulating typing for ${cleanNumber}: ${presence} for ${delayMs}ms`);
-  
-  await db.addLog('info', `Simulating typing state '${presence}' to ${cleanNumber} for ${delayMs / 1000}s`);
+
+  await db.addLog('info', `Simulating typing state '${presence}' to ${cleanNumber} for ${delayMs / 1000}s`, '', '', false, instanceConfig.id);
 
   // Try calling the Evolution v2 sendPresence endpoint, fallback to older updatePresence, fallback to v1 retrievingPresence
   try {
-    await callEvolutionAPI('/chat/sendPresence', 'POST', {
+    await callEvolutionAPI(instanceConfig, '/chat/sendPresence', 'POST', {
       number: cleanNumber,
       presence: presence,
       delay: delayMs
     }, true); // throwError = true
   } catch (err) {
     try {
-      await callEvolutionAPI('/chat/updatePresence', 'POST', {
+      await callEvolutionAPI(instanceConfig, '/chat/updatePresence', 'POST', {
         number: cleanNumber,
         presence: presence,
         delay: delayMs
       }, true); // throwError = true
     } catch (updateErr) {
       try {
-        await callEvolutionAPI('/chat/retrievingPresence', 'POST', {
+        await callEvolutionAPI(instanceConfig, '/chat/retrievingPresence', 'POST', {
           number: cleanNumber,
           delay: delayMs,
           presence: presence
@@ -92,7 +95,7 @@ export async function sendTypingState(number, presence = 'composing', delayMs = 
  */
 function introduceTypo(text) {
   if (!text || (text.startsWith('[') && text.endsWith(']')) || text.length < 5) return text;
-  
+
   // 5% chance of introducing a typo
   if (Math.random() > 0.05) return text;
 
@@ -101,7 +104,7 @@ function introduceTypo(text) {
 
   // Find index of Hebrew words that are eligible (length >= 3, pure letters)
   const eligibleIndices = [];
-  const hebrewWordRegex = /^[\u0590-\u05fe]{3,}$/;
+  const hebrewWordRegex = /^[֐-׾]{3,}$/;
   for (let i = 0; i < words.length; i++) {
     if (hebrewWordRegex.test(words[i])) {
       eligibleIndices.push(i);
@@ -140,15 +143,15 @@ function introduceTypo(text) {
  * Sends a text message to a number.
  * Automatically handles sending typing presence beforehand.
  */
-export async function sendMessage(number, text, simulateTyping = true) {
+export async function sendMessage(instanceConfig, number, text, simulateTyping = true) {
   // If message contains double-pipe '||', split and send sequentially with a short stagger
   if (text.includes('||')) {
     const parts = text.split('||').map(p => p.trim()).filter(Boolean);
     let allSuccess = true;
     for (let i = 0; i < parts.length; i++) {
-      const success = await sendMessage(number, parts[i], simulateTyping);
+      const success = await sendMessage(instanceConfig, number, parts[i], simulateTyping);
       allSuccess = allSuccess && success;
-      
+
       // Delay slightly between bubbles
       if (i < parts.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 1500));
@@ -162,13 +165,13 @@ export async function sendMessage(number, text, simulateTyping = true) {
 
   const isGroup = number.endsWith('@g.us');
   const cleanNumber = isGroup ? number : number.split('@')[0];
-  
+
   if (simulateTyping) {
     // Determine typing delay based on message length (approx. 50ms per character, min 2s, max 6s)
     const delay = Math.min(Math.max(processedText.length * 50, 2000), 6000);
     db.markTyping(cleanNumber);
     try {
-      await sendTypingState(cleanNumber, 'composing', delay);
+      await sendTypingState(instanceConfig, cleanNumber, 'composing', delay);
     } finally {
       db.clearTyping(cleanNumber);
     }
@@ -192,12 +195,12 @@ export async function sendMessage(number, text, simulateTyping = true) {
     text: processedText
   };
 
-  const result = await callEvolutionAPI('/message/sendText', 'POST', payload);
-  
+  const result = await callEvolutionAPI(instanceConfig, '/message/sendText', 'POST', payload);
+
   if (result.success) {
-    await db.incrementStat('outgoing');
-    await db.addLog('message', `Sent: ${text}`, text, cleanNumber, true);
-    
+    await db.incrementInstanceStat(instanceConfig.id, 'outgoing');
+    await db.addLog('message', `Sent: ${text}`, text, cleanNumber, true, instanceConfig.id);
+
     // Update contact's last interaction date
     try {
       const contacts = db.getContacts();
@@ -213,8 +216,8 @@ export async function sendMessage(number, text, simulateTyping = true) {
     }
   } else if (result.mock) {
     // If running in offline test mode
-    await db.incrementStat('outgoing');
-    await db.addLog('message', `[MOCK SEND] Sent: ${text}`, text, cleanNumber, true);
+    await db.incrementInstanceStat(instanceConfig.id, 'outgoing');
+    await db.addLog('message', `[MOCK SEND] Sent: ${text}`, text, cleanNumber, true, instanceConfig.id);
   }
 
   return result.success || result.mock;
@@ -223,7 +226,7 @@ export async function sendMessage(number, text, simulateTyping = true) {
 /**
  * Sends a read receipt for a chat/message.
  */
-export async function markRead(remoteJid, msgKey = null) {
+export async function markRead(instanceConfig, remoteJid, msgKey = null) {
   console.log(`Sending read receipt for JID: ${remoteJid}`);
   const isGroup = remoteJid.endsWith('@g.us');
   const cleanNumber = isGroup ? remoteJid : remoteJid.split('@')[0];
@@ -231,7 +234,7 @@ export async function markRead(remoteJid, msgKey = null) {
   // If a specific message key was passed (v2 markMessageAsRead format)
   if (msgKey && msgKey.id) {
     try {
-      const result = await callEvolutionAPI('/chat/markMessageAsRead', 'POST', {
+      const result = await callEvolutionAPI(instanceConfig, '/chat/markMessageAsRead', 'POST', {
         readMessages: [
           {
             remoteJid: remoteJid,
@@ -248,7 +251,7 @@ export async function markRead(remoteJid, msgKey = null) {
 
   // Fallback 1: Try v2 readMessages endpoint (just JID/number)
   try {
-    const result = await callEvolutionAPI('/chat/readMessages', 'POST', {
+    const result = await callEvolutionAPI(instanceConfig, '/chat/readMessages', 'POST', {
       number: cleanNumber
     }, true); // throwError = true
     return result.success || result.mock;
@@ -258,7 +261,7 @@ export async function markRead(remoteJid, msgKey = null) {
         read: true,
         wids: [remoteJid]
       };
-      const result = await callEvolutionAPI('/chat/markRead', 'POST', payload, true);
+      const result = await callEvolutionAPI(instanceConfig, '/chat/markRead', 'POST', payload, true);
       return result.success || result.mock;
     } catch (v1Err) {
       // Silently ignore read receipt fallback failures to keep logs clean
@@ -270,11 +273,11 @@ export async function markRead(remoteJid, msgKey = null) {
 /**
  * Sends an emoji reaction to a specific message.
  */
-export async function sendReaction(number, emoji, msgKeyOrId) {
+export async function sendReaction(instanceConfig, number, emoji, msgKeyOrId) {
   const isGroup = number.endsWith('@g.us');
   const cleanNumber = isGroup ? number : number.split('@')[0];
   const targetJid = isGroup ? number : `${cleanNumber}@s.whatsapp.net`;
-  
+
   let keyPayload;
   if (msgKeyOrId && typeof msgKeyOrId === 'object' && msgKeyOrId.id) {
     keyPayload = {
@@ -298,10 +301,10 @@ export async function sendReaction(number, emoji, msgKeyOrId) {
       key: keyPayload,
       reaction: emoji
     };
-    const result = await callEvolutionAPI('/message/sendReaction', 'POST', payload, true); // throwError = true
+    const result = await callEvolutionAPI(instanceConfig, '/message/sendReaction', 'POST', payload, true); // throwError = true
     if (result.success) {
-      await db.incrementStat('outgoing');
-      await db.addLog('success', `Reacted with ${emoji} to message`, emoji, cleanNumber, true);
+      await db.incrementInstanceStat(instanceConfig.id, 'outgoing');
+      await db.addLog('success', `Reacted with ${emoji} to message`, emoji, cleanNumber, true, instanceConfig.id);
       return true;
     }
   } catch (err) {
@@ -312,15 +315,15 @@ export async function sendReaction(number, emoji, msgKeyOrId) {
         reaction: emoji,
         messageId: keyPayload.id
       };
-      const result = await callEvolutionAPI('/message/sendReaction', 'POST', payload, true);
+      const result = await callEvolutionAPI(instanceConfig, '/message/sendReaction', 'POST', payload, true);
       if (result.success) {
-        await db.incrementStat('outgoing');
-        await db.addLog('success', `Reacted with ${emoji} to message (v1 fallback)`, emoji, cleanNumber, true);
+        await db.incrementInstanceStat(instanceConfig.id, 'outgoing');
+        await db.addLog('success', `Reacted with ${emoji} to message (v1 fallback)`, emoji, cleanNumber, true, instanceConfig.id);
         return true;
       }
     } catch (v1Err) {
       console.warn('Failed to send reaction via fallback:', v1Err.message);
-      await db.addLog('warning', `Failed to send reaction ${emoji}: ${v1Err.message}`);
+      await db.addLog('warning', `Failed to send reaction ${emoji}: ${v1Err.message}`, '', '', false, instanceConfig.id);
     }
   }
 
@@ -330,7 +333,7 @@ export async function sendReaction(number, emoji, msgKeyOrId) {
 /**
  * Sends a media message (images, videos, etc.) to a phone/group/status.
  */
-export async function sendMedia(number, base64Data, mediaType = 'image', fileName = 'file.png', caption = '') {
+export async function sendMedia(instanceConfig, number, base64Data, mediaType = 'image', fileName = 'file.png', caption = '') {
   const isGroup = number.endsWith('@g.us') || number === 'status@broadcast';
   const cleanNumber = isGroup ? number : number.split('@')[0];
 
@@ -345,14 +348,14 @@ export async function sendMedia(number, base64Data, mediaType = 'image', fileNam
     caption: caption
   };
 
-  const result = await callEvolutionAPI('/message/sendMedia', 'POST', payload);
+  const result = await callEvolutionAPI(instanceConfig, '/message/sendMedia', 'POST', payload);
 
   if (result.success) {
-    await db.incrementStat('outgoing');
-    await db.addLog('message', `Sent Media (${mediaType}): ${caption}`, caption, cleanNumber, true);
+    await db.incrementInstanceStat(instanceConfig.id, 'outgoing');
+    await db.addLog('message', `Sent Media (${mediaType}): ${caption}`, caption, cleanNumber, true, instanceConfig.id);
   } else if (result.mock) {
-    await db.incrementStat('outgoing');
-    await db.addLog('message', `[MOCK MEDIA] Sent Media (${mediaType}): ${caption}`, caption, cleanNumber, true);
+    await db.incrementInstanceStat(instanceConfig.id, 'outgoing');
+    await db.addLog('message', `[MOCK MEDIA] Sent Media (${mediaType}): ${caption}`, caption, cleanNumber, true, instanceConfig.id);
   }
 
   return result.success || result.mock;
@@ -361,12 +364,16 @@ export async function sendMedia(number, base64Data, mediaType = 'image', fileNam
 /**
  * Sends a status update (text or media) to WhatsApp Status/Stories.
  */
-export async function sendStatus(type, content, caption = '') {
+export async function sendStatus(instanceConfig, type, content, caption = '') {
   console.log(`Publishing WhatsApp status: type=${type}, caption="${caption}"`);
-  
+
   try {
+    // Bug fix (pre-multi-tenant this filtered ALL contacts globally): status
+    // is scoped to one WhatsApp account, so it must only ever target this
+    // instance's own contacts - otherwise instance A's status would try to
+    // broadcast to instance B's contacts too.
     const numericContacts = db.getContacts()
-      .filter(c => c.enabled !== false && c.phone)
+      .filter(c => c.instanceId === instanceConfig.id && c.enabled !== false && c.phone)
       .map(c => c.phone.replace(/[^0-9]/g, ''))
       .filter(p => p.length >= 9);
 
@@ -389,7 +396,7 @@ export async function sendStatus(type, content, caption = '') {
     }
 
     try {
-      const resPrimary = await callEvolutionAPI('/message/sendStatus', 'POST', flatPayload);
+      const resPrimary = await callEvolutionAPI(instanceConfig, '/message/sendStatus', 'POST', flatPayload);
       if (resPrimary.success || resPrimary.mock) {
         return true;
       }
@@ -415,7 +422,7 @@ export async function sendStatus(type, content, caption = '') {
     }
 
     try {
-      const resFallback = await callEvolutionAPI('/message/sendStatus', 'POST', statusBodyNumeric);
+      const resFallback = await callEvolutionAPI(instanceConfig, '/message/sendStatus', 'POST', statusBodyNumeric);
       if (resFallback.success || resFallback.mock) {
         return true;
       }
@@ -426,7 +433,7 @@ export async function sendStatus(type, content, caption = '') {
     return false;
   } catch (err) {
     console.error('Failed to publish status via sendStatus API:', err.message);
-    await db.addLog('error', `Failed to publish WhatsApp status: ${err.message}`);
+    await db.addLog('error', `Failed to publish WhatsApp status: ${err.message}`, '', '', false, instanceConfig.id);
   }
   return false;
 }
@@ -434,27 +441,27 @@ export async function sendStatus(type, content, caption = '') {
 /**
  * Posts a text status update to WhatsApp Status.
  */
-export async function sendStatusText(text) {
+export async function sendStatusText(instanceConfig, text) {
   console.log(`Posting text status: "${text}"`);
-  await db.addLog('info', `Posting WhatsApp text status update: ${text}`);
-  return await sendStatus('text', text);
+  await db.addLog('info', `Posting WhatsApp text status update: ${text}`, '', '', false, instanceConfig.id);
+  return await sendStatus(instanceConfig, 'text', text);
 }
 
 /**
  * Posts a media status update (image) to WhatsApp Status.
  */
-export async function sendStatusImage(localImagePath, caption = '') {
+export async function sendStatusImage(instanceConfig, localImagePath, caption = '') {
   console.log(`Posting image status from ${localImagePath} with caption: "${caption}"`);
-  await db.addLog('info', `Posting WhatsApp image status from ${localImagePath}`);
+  await db.addLog('info', `Posting WhatsApp image status from ${localImagePath}`, '', '', false, instanceConfig.id);
 
   try {
     const fileData = await fs.readFile(localImagePath, 'base64');
     const base64Data = `data:image/png;base64,${fileData}`;
-    
-    return await sendStatus('image', base64Data, caption);
+
+    return await sendStatus(instanceConfig, 'image', base64Data, caption);
   } catch (err) {
     console.error('Failed to read local status image file:', err);
-    await db.addLog('error', `Failed to post status image: ${err.message}`);
+    await db.addLog('error', `Failed to post status image: ${err.message}`, '', '', false, instanceConfig.id);
     return false;
   }
 }
@@ -464,11 +471,10 @@ export async function sendStatusImage(localImagePath, caption = '') {
  * Randomly decides whether to perform a "silent read" (blue checkmark without reply)
  * or leave the message unread (gray checkmarks), respecting a daily silent read quota.
  */
-export async function handleLimitStop(phone, remoteJid, msgKey, contactName, reason) {
-  const config = getConfig();
+export async function handleLimitStop(instanceConfig, phone, remoteJid, msgKey, contactName, reason) {
   const todayStr = db.getTodayDateString();
-  const maxSilentReads = config.maxSilentReadsPerDay || 4;
-  
+  const maxSilentReads = instanceConfig.maxSilentReadsPerDay || 4;
+
   const todaySilentReads = db.getLogs().filter(log =>
     log.timestamp && log.timestamp.startsWith(todayStr) &&
     typeof log.message === 'string' && log.message.includes('[SILENT_READ]')
@@ -477,15 +483,15 @@ export async function handleLimitStop(phone, remoteJid, msgKey, contactName, rea
   const shouldSilentRead = todaySilentReads < maxSilentReads && Math.random() < 0.40;
   if (shouldSilentRead && remoteJid && msgKey) {
     console.log(`[SILENT_READ] Marking message read without replying for ${phone} (${todaySilentReads + 1}/${maxSilentReads} today). Reason: ${reason}`);
-    await db.addLog('info', `[SILENT_READ] Left blue checkmark without replying for ${contactName || phone} (${reason}).`, '', phone);
+    await db.addLog('info', `[SILENT_READ] Left blue checkmark without replying for ${contactName || phone} (${reason}).`, '', phone, false, instanceConfig.id);
     setTimeout(async () => {
       try {
-        await sendTypingState(phone, 'available', 1500);
-        await markRead(remoteJid, msgKey);
+        await sendTypingState(instanceConfig, phone, 'available', 1500);
+        await markRead(instanceConfig, remoteJid, msgKey);
       } catch (e) {}
     }, 3000);
   } else {
     console.log(`Leaving message unread (no blue checkmark) for ${phone}. Reason: ${reason}`);
-    await db.addLog('info', `Left message unread without replying for ${contactName || phone} (${reason}).`, '', phone);
+    await db.addLog('info', `Left message unread without replying for ${contactName || phone} (${reason}).`, '', phone, false, instanceConfig.id);
   }
 }

@@ -47,9 +47,11 @@ let contactsList = [];
 let logsList = [];
 let leaderboardChats = [];
 let systemStatus = {};
-let adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
+let adminSecrets = { geminiApiKey: '' };
 let simulatorHistory = [];
 let activeChatPhone = null;
+let instancesList = [];
+let selectedInstanceId = ''; // '' = let the server resolve the default instance
 
 // DOM Elements
 const systemStatusPill = document.getElementById('system-status-pill');
@@ -71,8 +73,6 @@ const statusTodayVal = document.getElementById('status-today-val');
 const btnPostStatus = document.getElementById('btn-post-status');
 const statusPreviewContainer = document.getElementById('status-preview-container');
 const statusPreviewVal = document.getElementById('status-preview-val');
-const btnTestConnection = document.getElementById('btn-test-connection');
-const connectionTestResults = document.getElementById('connection-test-results');
 
 const logsListContainer = document.getElementById('logs-list');
 const contactsTableBody = document.getElementById('contacts-table-body');
@@ -109,11 +109,27 @@ document.addEventListener('DOMContentLoaded', () => {
   settingsForm.addEventListener('submit', handleSaveSettings);
   simulatorForm.addEventListener('submit', handleSimulatorSubmit);
   btnPostStatus.addEventListener('click', handlePostStatus);
-  btnTestConnection.addEventListener('click', handleTestConnection);
-  
+
   const btnResetData = document.getElementById('btn-reset-data');
   if (btnResetData) {
     btnResetData.addEventListener('click', handleResetData);
+  }
+
+  // Instances tab
+  const openAddInstanceModalBtn = document.getElementById('btn-open-add-instance-modal');
+  const closeInstanceModalBtn = document.getElementById('btn-close-instance-modal');
+  const cancelInstanceModalBtn = document.getElementById('btn-cancel-instance-modal');
+  if (openAddInstanceModalBtn) openAddInstanceModalBtn.addEventListener('click', openAddInstanceModal);
+  if (closeInstanceModalBtn) closeInstanceModalBtn.addEventListener('click', () => instanceModal.classList.remove('open'));
+  if (cancelInstanceModalBtn) cancelInstanceModalBtn.addEventListener('click', () => instanceModal.classList.remove('open'));
+  if (instanceForm) instanceForm.addEventListener('submit', handleInstanceFormSubmit);
+
+  const instanceSelector = document.getElementById('instance-selector');
+  if (instanceSelector) {
+    instanceSelector.addEventListener('change', (e) => {
+      selectedInstanceId = e.target.value;
+      fetchStatus();
+    });
   }
   
   const liveChatForm = document.getElementById('livechat-send-form');
@@ -179,7 +195,7 @@ async function checkAdminAuth() {
   const pin = localStorage.getItem('adminPin') || '';
   if (!pin) {
     isAdmin = false;
-    adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
+    adminSecrets = { geminiApiKey: '' };
     updateAdminUI();
     return;
   }
@@ -193,12 +209,15 @@ async function checkAdminAuth() {
     isAdmin = !!data.success;
     if (!isAdmin) {
       localStorage.removeItem('adminPin');
-      adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
+      adminSecrets = { geminiApiKey: '' };
     } else {
       try {
+        // /api/settings/secrets now only returns the global geminiApiKey -
+        // per-instance secrets (Evolution creds, webhook secret) are fetched
+        // on demand via /api/instances/:id/secrets when editing an instance.
         adminSecrets = await fetchAPI('/api/settings/secrets');
       } catch (e) {
-        adminSecrets = { geminiApiKey: '', evolutionToken: '', webhookSecret: '' };
+        adminSecrets = { geminiApiKey: '' };
       }
     }
   } catch (e) {
@@ -235,7 +254,9 @@ function updateAdminUI() {
   const adminIcon = document.getElementById('admin-icon');
   const adminLabel = document.getElementById('admin-label');
   const settingsTabBtn = document.querySelector('.tab-btn[data-tab="settings"]');
+  const instancesTabBtn = document.querySelector('.tab-btn[data-tab="instances"]');
   const addContactBtn = document.getElementById('btn-open-add-contact-modal');
+  const addInstanceBtn = document.getElementById('btn-open-add-instance-modal');
   const triggerStoryBtn = document.getElementById('btn-post-status');
   const resetBtn = document.getElementById('btn-reset-data');
   const livechatForm = document.getElementById('livechat-send-form');
@@ -248,7 +269,9 @@ function updateAdminUI() {
       adminPill.style.borderColor = '#10b981';
     }
     if (settingsTabBtn) settingsTabBtn.style.display = '';
+    if (instancesTabBtn) instancesTabBtn.style.display = '';
     if (addContactBtn) addContactBtn.style.display = '';
+    if (addInstanceBtn) addInstanceBtn.style.display = '';
     if (triggerStoryBtn) triggerStoryBtn.style.display = '';
     if (resetBtn) resetBtn.style.display = '';
     if (livechatForm) livechatForm.style.display = '';
@@ -266,7 +289,14 @@ function updateAdminUI() {
         document.querySelector('.tab-btn[data-tab="overview"]')?.click();
       }
     }
+    if (instancesTabBtn) {
+      instancesTabBtn.style.display = 'none';
+      if (instancesTabBtn.classList.contains('active')) {
+        document.querySelector('.tab-btn[data-tab="overview"]')?.click();
+      }
+    }
     if (addContactBtn) addContactBtn.style.display = 'none';
+    if (addInstanceBtn) addInstanceBtn.style.display = 'none';
     if (triggerStoryBtn) triggerStoryBtn.style.display = 'none';
     if (resetBtn) resetBtn.style.display = 'none';
     if (livechatForm) livechatForm.style.display = 'none';
@@ -276,6 +306,7 @@ function updateAdminUI() {
 
 // Load status, contacts, and logs
 async function loadData() {
+  await fetchInstances(); // must resolve selectedInstanceId before fetchStatus reads it
   await Promise.all([
     fetchStatus(),
     fetchContacts(),
@@ -289,6 +320,7 @@ async function loadData() {
 // Staggered Polling
 async function pollRealtimeData() {
   try {
+    await fetchInstances();
     await fetchStatus();
     await fetchContacts();
     await fetchLogs();
@@ -302,9 +334,26 @@ async function pollRealtimeData() {
 
 // API fetches
 async function fetchStatus() {
-  const status = await fetchAPI('/api/status');
+  const qs = selectedInstanceId ? `?instanceId=${encodeURIComponent(selectedInstanceId)}` : '';
+  const status = await fetchAPI(`/api/status${qs}`);
   systemStatus = status;
   updateStatusUI();
+}
+
+async function fetchInstances() {
+  try {
+    instancesList = await fetchAPI('/api/instances', { silentAuth: true });
+  } catch (e) {
+    instancesList = [];
+  }
+  // Default the selector to the current default instance the first time
+  // instances load, or if the previously-selected one no longer exists.
+  if (!selectedInstanceId || !instancesList.some(i => i.id === selectedInstanceId)) {
+    const def = instancesList.find(i => i.isDefault);
+    selectedInstanceId = def ? def.id : (instancesList[0]?.id || '');
+  }
+  updateInstanceSelectorUI();
+  updateInstancesUI();
 }
 
 async function fetchContacts() {
@@ -333,6 +382,252 @@ async function fetchLeaderboardChats() {
     leaderboardChats = [];
   }
   updateLeaderboardUI();
+}
+
+// Populates both the overview "which number's stats am I looking at"
+// selector and the Add Contact modal's instance picker from the same
+// instancesList - kept in sync on every fetchInstances() poll.
+function updateInstanceSelectorUI() {
+  const overviewSelect = document.getElementById('instance-selector');
+  const contactSelect = document.getElementById('contact-instance-select');
+
+  if (overviewSelect) {
+    const html = instancesList.length === 0
+      ? '<option value="">אין מספרים מוגדרים</option>'
+      : instancesList.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.label)}${i.isDefault ? ' (ברירת מחדל)' : ''} - יום ${i.currentDay}/14</option>`).join('');
+    if (overviewSelect.innerHTML !== html) overviewSelect.innerHTML = html;
+    if (overviewSelect.value !== selectedInstanceId) overviewSelect.value = selectedInstanceId;
+  }
+
+  if (contactSelect) {
+    const defaultOptionLabel = instancesList.find(i => i.isDefault)
+      ? `-- ברירת המחדל (${escapeHtml(instancesList.find(i => i.isDefault).label)}) --`
+      : '-- ברירת המחדל --';
+    const html = `<option value="">${defaultOptionLabel}</option>` +
+      instancesList.filter(i => !i.isDefault).map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.label)}</option>`).join('');
+    if (contactSelect.innerHTML !== html) contactSelect.innerHTML = html;
+  }
+}
+
+// Render the Instances admin table
+function updateInstancesUI() {
+  const tbody = document.getElementById('instances-table-body');
+  if (!tbody) return;
+
+  if (instancesList.length === 0) {
+    const emptyHtml = `<tr><td colspan="8" class="text-center text-muted italic">אין עדיין מספרים מוגדרים.</td></tr>`;
+    if (tbody.innerHTML !== emptyHtml) tbody.innerHTML = emptyHtml;
+    return;
+  }
+
+  let html = '';
+  instancesList.forEach(inst => {
+    html += `
+      <tr>
+        <td><strong>${escapeHtml(inst.label)}</strong></td>
+        <td>${escapeHtml(inst.phone || '-')}</td>
+        <td>
+          ${inst.isDefault
+            ? '<span class="badge badge-green">✅ ברירת מחדל</span>'
+            : `<button class="btn btn-sm btn-outline" onclick="setDefaultInstance('${inst.id}')">הפוך לברירת מחדל</button>`}
+        </td>
+        <td class="ltr-text">${inst.currentDay} / 14</td>
+        <td>${(() => {
+          if (inst.warmupExempt) return '<span class="text-muted">ללא הגבלה (פטור)</span>';
+          const activeLimit = inst.currentDay <= 7 ? inst.week1Limit : inst.week2Limit;
+          const weekLabel = inst.currentDay <= 7 ? 'שבוע 1' : 'שבוע 2';
+          return `${escapeHtml(String(activeLimit))} <span class="text-muted" style="font-size:0.75em;">(${weekLabel}, יומי)</span>`;
+        })()}</td>
+        <td>
+          <label class="toggle-switch">
+            <input type="checkbox" ${inst.warmupEnabled ? 'checked' : ''} onchange="toggleInstanceField('${inst.id}', 'warmupEnabled', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td>
+        <td title="פטור ממכסה יומית ומנוחת לילה - מיועד למספר בוגר שסיים חימום">
+          <label class="toggle-switch">
+            <input type="checkbox" ${inst.warmupExempt ? 'checked' : ''} onchange="toggleInstanceField('${inst.id}', 'warmupExempt', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td>
+        <td>
+          <div class="actions-cell">
+            <button class="btn btn-sm btn-outline" onclick="openEditInstanceModal('${inst.id}')" title="עריכה">ערוך ✏️</button>
+            <button class="btn btn-sm btn-outline" onclick="testInstanceConnection('${inst.id}')" title="בדיקת חיבור Evolution">בדיקה 🔍</button>
+            ${!inst.isDefault ? `<button class="btn btn-sm btn-outline" style="border-color: rgba(239, 68, 68, 0.3); color: #fca5a5" onclick="deleteInstance('${inst.id}')" title="מחק">מחק 🗑️</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  if (tbody.innerHTML !== html) {
+    tbody.innerHTML = html;
+  }
+}
+
+// Quick inline toggle for warmupEnabled/warmupExempt from the table
+window.toggleInstanceField = async function(id, field, value) {
+  try {
+    await fetchAPI(`/api/instances/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ [field]: value })
+    });
+    showNotification('המספר עודכן.', 'success');
+    await fetchInstances();
+  } catch (err) {
+    await fetchInstances(); // revert the checkbox to the real server state
+  }
+};
+
+window.setDefaultInstance = async function(id) {
+  if (!confirm('להפוך את המספר הזה לברירת המחדל של הלידרבורד הציבורי?')) return;
+  try {
+    await fetchAPI(`/api/instances/${id}/set-default`, { method: 'POST' });
+    showNotification('ברירת המחדל עודכנה.', 'success');
+    await fetchInstances();
+  } catch (err) {
+    // handled
+  }
+};
+
+window.deleteInstance = async function(id) {
+  if (!confirm('למחוק את המספר הזה לצמיתות? פעולה זו אפשרית רק אם אין אנשי קשר המשויכים אליו.')) return;
+  try {
+    await fetchAPI(`/api/instances/${id}`, { method: 'DELETE' });
+    showNotification('המספר נמחק.', 'success');
+    await fetchInstances();
+  } catch (err) {
+    // handled
+  }
+};
+
+window.testInstanceConnection = async function(id) {
+  showNotification('בודק חיבור Evolution למספר...', 'info');
+  try {
+    const res = await fetchAPI(`/api/test-connection?instanceId=${encodeURIComponent(id)}`);
+    if (res.report.evolution.success) {
+      showNotification(`✅ החיבור תקין! מצב: ${res.report.evolution.state}`, 'success');
+    } else {
+      showNotification(`❌ בעיית חיבור: ${res.report.evolution.error}`, 'error');
+    }
+  } catch (err) {
+    // handled
+  }
+};
+
+// Add/Edit Instance modal
+const instanceModal = document.getElementById('instance-modal');
+const instanceForm = document.getElementById('instance-form');
+
+function openAddInstanceModal() {
+  instanceForm.reset();
+  document.getElementById('instance-id').value = '';
+  document.getElementById('instance-modal-title').textContent = '📡 הוספת מספר וואטסאפ חדש';
+  document.getElementById('instance-webhook-url-box').style.display = 'none';
+  // Sensible defaults matching the backend's own defaults for a fresh instance
+  document.getElementById('instance-current-day').value = 1;
+  document.getElementById('instance-rest-start').value = '23:00';
+  document.getElementById('instance-rest-end').value = '08:00';
+  document.getElementById('instance-night-rest-enabled').checked = true;
+  document.getElementById('instance-busy-simulation-enabled').checked = true;
+  document.getElementById('instance-interval-min').value = 30;
+  document.getElementById('instance-interval-max').value = 90;
+  document.getElementById('instance-limit-w1').value = 20;
+  document.getElementById('instance-limit-w2').value = 60;
+  document.getElementById('instance-max-replies').value = 4;
+  document.getElementById('instance-max-silent').value = 4;
+  document.getElementById('instance-groups-enabled').checked = true;
+  document.getElementById('instance-group-limit').value = 2;
+  instanceModal.classList.add('open');
+}
+
+window.openEditInstanceModal = async function(id) {
+  const inst = instancesList.find(i => i.id === id);
+  if (!inst) return;
+
+  instanceForm.reset();
+  document.getElementById('instance-id').value = inst.id;
+  document.getElementById('instance-modal-title').textContent = `📡 עריכת מספר: ${inst.label}`;
+  document.getElementById('instance-label').value = inst.label || '';
+  document.getElementById('instance-phone').value = inst.phone || '';
+  document.getElementById('instance-evo-url').value = inst.evolutionUrl || '';
+
+  // Secrets aren't in the list payload (masked) - fetch them on demand only when actually editing.
+  try {
+    const secrets = await fetchAPI(`/api/instances/${id}/secrets`);
+    document.getElementById('instance-evo-token').value = secrets.evolutionToken || '';
+    document.getElementById('instance-evo-instance').value = secrets.evolutionInstance || '';
+    document.getElementById('instance-webhook-secret').value = secrets.webhookSecret || '';
+  } catch (e) {
+    // Leave blank - saving will simply not change them unless re-entered, per the form's own logic below.
+  }
+
+  const webhookUrlBox = document.getElementById('instance-webhook-url-box');
+  const webhookUrlDisplay = document.getElementById('instance-webhook-url-display');
+  webhookUrlBox.style.display = '';
+  webhookUrlDisplay.value = `${window.location.origin}/webhook/${inst.id}/<הסוד שהוגדר למעלה>`;
+
+  document.getElementById('instance-warmup-enabled').checked = !!inst.warmupEnabled;
+  document.getElementById('instance-warmup-exempt').checked = !!inst.warmupExempt;
+  document.getElementById('instance-current-day').value = inst.currentDay || 1;
+  document.getElementById('instance-rest-start').value = inst.nightRestStart || '23:00';
+  document.getElementById('instance-rest-end').value = inst.nightRestEnd || '08:00';
+  document.getElementById('instance-night-rest-enabled').checked = inst.nightRestEnabled !== false;
+  document.getElementById('instance-busy-simulation-enabled').checked = inst.busySimulationEnabled !== false;
+  document.getElementById('instance-interval-min').value = inst.activeMinIntervalMinutes || 30;
+  document.getElementById('instance-interval-max').value = inst.activeMaxIntervalMinutes || 90;
+  document.getElementById('instance-limit-w1').value = inst.week1Limit || 20;
+  document.getElementById('instance-limit-w2').value = inst.week2Limit || 60;
+  document.getElementById('instance-max-replies').value = inst.maxRepliesPerContactPerDay || 4;
+  document.getElementById('instance-max-silent').value = inst.maxSilentReadsPerDay || 4;
+  document.getElementById('instance-groups-enabled').checked = inst.groupsEnabled !== false;
+  document.getElementById('instance-group-limit').value = inst.groupReplyLimitPerDay ?? 2;
+
+  instanceModal.classList.add('open');
+};
+
+async function handleInstanceFormSubmit(e) {
+  e.preventDefault();
+
+  const id = document.getElementById('instance-id').value;
+  const payload = {
+    label: document.getElementById('instance-label').value,
+    phone: document.getElementById('instance-phone').value.replace(/\D/g, ''),
+    evolutionUrl: document.getElementById('instance-evo-url').value,
+    evolutionToken: document.getElementById('instance-evo-token').value,
+    evolutionInstance: document.getElementById('instance-evo-instance').value,
+    webhookSecret: document.getElementById('instance-webhook-secret').value,
+    warmupEnabled: document.getElementById('instance-warmup-enabled').checked,
+    warmupExempt: document.getElementById('instance-warmup-exempt').checked,
+    currentDay: parseInt(document.getElementById('instance-current-day').value),
+    nightRestStart: document.getElementById('instance-rest-start').value,
+    nightRestEnd: document.getElementById('instance-rest-end').value,
+    nightRestEnabled: document.getElementById('instance-night-rest-enabled').checked,
+    busySimulationEnabled: document.getElementById('instance-busy-simulation-enabled').checked,
+    activeMinIntervalMinutes: parseInt(document.getElementById('instance-interval-min').value),
+    activeMaxIntervalMinutes: parseInt(document.getElementById('instance-interval-max').value),
+    week1Limit: parseInt(document.getElementById('instance-limit-w1').value),
+    week2Limit: parseInt(document.getElementById('instance-limit-w2').value),
+    maxRepliesPerContactPerDay: parseInt(document.getElementById('instance-max-replies').value) || 4,
+    maxSilentReadsPerDay: parseInt(document.getElementById('instance-max-silent').value) || 4,
+    groupsEnabled: document.getElementById('instance-groups-enabled').checked,
+    groupReplyLimitPerDay: parseInt(document.getElementById('instance-group-limit').value)
+  };
+
+  try {
+    if (id) {
+      await fetchAPI(`/api/instances/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showNotification('המספר עודכן בהצלחה!', 'success');
+    } else {
+      const result = await fetchAPI('/api/instances', { method: 'POST', body: JSON.stringify(payload) });
+      showNotification(`המספר "${payload.label}" נוסף בהצלחה! העתק את כתובת ה-Webhook מלשונית העריכה שלו.`, 'success');
+    }
+    instanceModal.classList.remove('open');
+    await fetchInstances();
+  } catch (err) {
+    // Already handled by fetchAPI
+  }
 }
 
 // Update Status indicators and stats
@@ -446,35 +741,13 @@ function updateStatusUI() {
     statusPreviewImg.src = '';
   }
 
-  // 7. Populating form elements with config settings (only if form isn't dirty/being edited)
+  // 7. Populating the (now global-only) settings form - Evolution/quota/day
+  // fields moved to the per-instance Instances tab/modal (see
+  // openEditInstanceModal), only if form isn't dirty/being edited.
   if (!settingsForm.classList.contains('dirty')) {
-    // Secret values never come from the public /api/status payload - only from the
+    // Secret value never comes from the public /api/status payload - only from the
     // admin-only /api/settings/secrets fetch performed in checkAdminAuth().
     document.getElementById('setting-gemini-key').value = isAdmin ? (adminSecrets.geminiApiKey || '') : '';
-    document.getElementById('setting-evo-url').value = config.evolutionUrl || '';
-    document.getElementById('setting-evo-token').value = isAdmin ? (adminSecrets.evolutionToken || '') : '';
-    document.getElementById('setting-evo-instance').value = config.evolutionInstance || '';
-    const webhookSecretInput = document.getElementById('setting-webhook-secret');
-    if (webhookSecretInput) webhookSecretInput.value = isAdmin ? (adminSecrets.webhookSecret || '') : '';
-
-    document.getElementById('setting-current-day').value = config.currentDay;
-    document.getElementById('setting-warmup-enabled').checked = config.warmupEnabled;
-    document.getElementById('setting-rest-start').value = config.nightRestStart;
-    document.getElementById('setting-rest-end').value = config.nightRestEnd;
-    document.getElementById('setting-night-rest-enabled').checked = config.nightRestEnabled !== false;
-    document.getElementById('setting-busy-simulation-enabled').checked = config.busySimulationEnabled !== false;
-    document.getElementById('setting-interval-min').value = config.activeMinIntervalMinutes;
-    document.getElementById('setting-interval-max').value = config.activeMaxIntervalMinutes;
-    
-    document.getElementById('setting-limit-w1').value = config.week1Limit;
-    document.getElementById('setting-limit-w2').value = config.week2Limit;
-    document.getElementById('setting-max-replies').value = config.maxRepliesPerContactPerDay || 4;
-    document.getElementById('setting-max-silent').value = config.maxSilentReadsPerDay || 4;
-    
-    document.getElementById('setting-groups-enabled').checked = config.groupsEnabled;
-    document.getElementById('setting-group-limit').value = config.groupReplyLimitPerDay;
-
-    document.getElementById('setting-bot-whatsapp-number').value = config.botWhatsappNumber || '';
     document.getElementById('setting-leaderboard-topics').value = (config.leaderboardTopics || []).join(', ');
     document.getElementById('setting-leaderboard-min-messages').value = config.leaderboardMinMessagesToPublish || 4;
   }
@@ -658,7 +931,8 @@ async function handleAddContact(e) {
     name: document.getElementById('contact-name').value,
     phone: document.getElementById('contact-phone').value,
     notes: document.getElementById('contact-notes').value,
-    enabled: document.getElementById('contact-enabled').checked
+    enabled: document.getElementById('contact-enabled').checked,
+    instanceId: document.getElementById('contact-instance-select')?.value || undefined
   };
   
   try {
@@ -683,48 +957,21 @@ async function handleSaveSettings(e) {
   
   const payload = {
     geminiApiKey: document.getElementById('setting-gemini-key').value,
-    evolutionUrl: document.getElementById('setting-evo-url').value,
-    evolutionToken: document.getElementById('setting-evo-token').value,
-    evolutionInstance: document.getElementById('setting-evo-instance').value,
-    webhookSecret: document.getElementById('setting-webhook-secret')?.value ?? adminSecrets.webhookSecret,
-
-    currentDay: parseInt(document.getElementById('setting-current-day').value),
-    warmupEnabled: document.getElementById('setting-warmup-enabled').checked,
-    nightRestStart: document.getElementById('setting-rest-start').value,
-    nightRestEnd: document.getElementById('setting-rest-end').value,
-    nightRestEnabled: document.getElementById('setting-night-rest-enabled').checked,
-    busySimulationEnabled: document.getElementById('setting-busy-simulation-enabled').checked,
-    activeMinIntervalMinutes: parseInt(document.getElementById('setting-interval-min').value),
-    activeMaxIntervalMinutes: parseInt(document.getElementById('setting-interval-max').value),
-    
-    week1Limit: parseInt(document.getElementById('setting-limit-w1').value),
-    week2Limit: parseInt(document.getElementById('setting-limit-w2').value),
-    maxRepliesPerContactPerDay: parseInt(document.getElementById('setting-max-replies').value) || 4,
-    maxSilentReadsPerDay: parseInt(document.getElementById('setting-max-silent').value) || 4,
-    
-    groupsEnabled: document.getElementById('setting-groups-enabled').checked,
-    groupReplyLimitPerDay: parseInt(document.getElementById('setting-group-limit').value),
-
-    botWhatsappNumber: document.getElementById('setting-bot-whatsapp-number').value.replace(/\D/g, ''),
     leaderboardTopics: document.getElementById('setting-leaderboard-topics').value
       .split(',').map(t => t.trim()).filter(Boolean),
     leaderboardMinMessagesToPublish: parseInt(document.getElementById('setting-leaderboard-min-messages').value) || 4
   };
-  
+
   try {
     const result = await fetchAPI('/api/settings', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
-    
+
     if (result.success) {
       showNotification('ההגדרות נשמרו ועודכנו במערכת!', 'success');
       settingsForm.classList.remove('dirty');
-      adminSecrets = {
-        geminiApiKey: payload.geminiApiKey,
-        evolutionToken: payload.evolutionToken,
-        webhookSecret: payload.webhookSecret
-      };
+      adminSecrets = { geminiApiKey: payload.geminiApiKey };
       await fetchStatus();
     }
   } catch (err) {
@@ -841,6 +1088,13 @@ async function handleSimulatorSubmit(e) {
   // 2. Show typing indicator to simulate waiting for bot response
   const typingBubble = showSimulatorTypingIndicator();
   
+  // Route through the phone's actual owning instance so a contact belonging
+  // to a non-default number doesn't get silently ignored by the webhook's
+  // cross-instance guard (falls back to the default instance for brand-new
+  // numbers not in contactsList yet, matching the real signup flow).
+  const simContact = contactsList.find(c => c.phone === phone.split('@')[0]);
+  const targetInstanceId = simContact?.instanceId || undefined;
+
   try {
     const result = await fetchAPI('/api/test/incoming', {
       method: 'POST',
@@ -848,7 +1102,8 @@ async function handleSimulatorSubmit(e) {
         phone,
         message,
         isGroup,
-        senderName: name
+        senderName: name,
+        instanceId: targetInstanceId
       })
     });
 
@@ -985,51 +1240,6 @@ async function handlePostStatus() {
   } finally {
     btnPostStatus.disabled = false;
     btnPostStatus.textContent = 'פרסם סטטוס עכשיו 📢';
-  }
-}
-
-async function handleTestConnection() {
-  btnTestConnection.disabled = true;
-  btnTestConnection.textContent = 'בודק חיבורים... ⏳';
-  connectionTestResults.style.display = 'block';
-  connectionTestResults.style.border = '1px solid rgba(255,255,255,0.1)';
-  connectionTestResults.innerHTML = '<span style="color: var(--text-secondary);">מבצע בדיקה של מפתח Gemini וחיבור ה-Evolution API, אנא המתן...</span>';
-  
-  try {
-    const res = await fetchAPI('/api/test-connection');
-    
-    let html = '';
-    
-    // Gemini Status
-    if (res.report.gemini.success) {
-      html += '<div style="margin-bottom: 8px;"><strong style="color: #34d399;">✅ Gemini API:</strong> מחובר ותקין! מפתח ה-API של Studio מאומת.</div>';
-    } else {
-      html += `<div style="margin-bottom: 8px;"><strong style="color: #f87171;">❌ Gemini API:</strong> שגיאה!<br><span style="font-size: 0.8rem; color: #f87171;">${res.report.gemini.error}</span></div>`;
-    }
-    
-    // Evolution Status
-    if (res.report.evolution.success) {
-      html += `<div><strong style="color: #34d399;">✅ Evolution API:</strong> מחובר ותקין!<br>מכשיר הוואטסאפ במצב מחובר (Instance State: <strong>${res.report.evolution.state}</strong>).</div>`;
-    } else {
-      const stateColor = res.report.evolution.state === 'close' ? '#fbbf24' : '#f87171';
-      const headingText = res.report.evolution.state === 'close' ? 'בעיית התחברות (WhatsApp offline)' : 'בעיה בחיבור';
-      html += `<div><strong style="color: ${stateColor};">❌ Evolution API (${headingText}):</strong><br><span style="font-size: 0.8rem; color: #f87171;">${res.report.evolution.error || 'נכשל בפנייה לשרת'}</span></div>`;
-    }
-    
-    connectionTestResults.innerHTML = html;
-    
-    if (res.success) {
-      showNotification('בדיקת ההתממשקות עברה בהצלחה מלאה! כל הצינורות תקינים.', 'success');
-    } else {
-      showNotification('נמצאו שגיאות בחיבור. אנא בדוק את הפרטים שהזנת.', 'error');
-    }
-  } catch (err) {
-    console.error('Connection test failed:', err);
-    connectionTestResults.innerHTML = `<span style="color: #f87171;">שגיאה קריטית בביצוע הבדיקה: ${err.message}</span>`;
-    showNotification(`הבדיקה נכשלה: ${err.message}`, 'error');
-  } finally {
-    btnTestConnection.disabled = false;
-    btnTestConnection.textContent = '🔍 בדיקת התממשקות וחיבור API';
   }
 }
 

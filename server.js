@@ -6,8 +6,8 @@ import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import db from './database.js';
-import scheduler from './scheduler.js';
-import { getConfig, isNightTime, getDailyQuota, getIsraelTime, computeDynamicContactCap, getContactStatus, isDailyQuotaReached } from './config.js';
+import schedulerManager from './scheduler.js';
+import { getConfig, getGlobalConfig, isNightTime, getDailyQuota, getIsraelTime, computeDynamicContactCap, getContactStatus, isDailyQuotaReached } from './config.js';
 import { sendMessage, markRead, sendReaction, sendTypingState, handleLimitStop } from './evolution.js';
 import { generateReply, generateGroupReply } from './gemini.js';
 
@@ -38,20 +38,47 @@ function extractTextFromMessage(messageObj) {
 }
 
 /**
- * Webhook endpoint to receive events from Evolution API.
- * If a webhookSecret is configured, requests must present it via the URL path
- * segment, an 'x-webhook-secret' header, or a 'secret' query param - otherwise
- * anyone who finds this URL could inject fake incoming messages.
+ * Webhook endpoint to receive events from Evolution API. Each bot instance
+ * (WhatsApp number) has its own separate Evolution API deployment, so the
+ * URL itself identifies which instance a payload belongs to via :instanceId.
+ * The no-instanceId variants are a legacy alias that resolves to the
+ * current default instance - kept only until every configured instance's
+ * Evolution webhook config is confirmed pointed at its own /:instanceId/
+ * URL (see Phase 7 cleanup in the multi-tenant plan).
+ * If a webhookSecret is configured for the resolved instance, requests must
+ * present it via the URL path segment, an 'x-webhook-secret' header, or a
+ * 'secret' query param - otherwise anyone who finds this URL could inject
+ * fake incoming messages.
+ *
+ * IMPORTANT: the instanceId-aware form is always exactly 3 path segments
+ * (/webhook/:instanceId/:secret), never /webhook/:instanceId alone - a
+ * 2-segment form would be indistinguishable from (and permanently shadowed
+ * by) the legacy 2-segment /webhook/:secret route below, since Express
+ * matches by segment shape, not by param name. When an instance has no
+ * secret configured, use any placeholder value for that segment.
  */
-app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'], async (req, res) => {
-  const config = getConfig();
+app.post(['/webhook/:instanceId/:secret', '/api/webhook/:instanceId/:secret', '/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'], async (req, res) => {
+  let instance;
+  if (req.params.instanceId) {
+    instance = db.getInstanceById(req.params.instanceId);
+    if (!instance) {
+      return res.status(404).json({ error: `Unknown bot instance: ${req.params.instanceId}` });
+    }
+  } else {
+    instance = db.getDefaultInstance();
+    if (!instance) {
+      return res.status(500).json({ error: 'No default bot instance is configured.' });
+    }
+  }
+
+  const config = getConfig(instance.id);
   if (config.webhookSecret) {
     const providedSecret = req.params.secret || req.headers['x-webhook-secret'] || req.query.secret;
     if (providedSecret !== config.webhookSecret) {
       return res.status(401).json({ error: 'Unauthorized: invalid or missing webhook secret' });
     }
   } else {
-    console.warn('WARNING: No webhookSecret configured - /webhook is publicly reachable without authentication. Set one in Settings.');
+    console.warn(`WARNING: No webhookSecret configured for instance "${instance.label}" (${instance.id}) - its webhook is publicly reachable without authentication. Set one in its instance settings.`);
   }
 
   const { event, data } = req.body;
@@ -90,31 +117,29 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
     // CASE A: GROUP MESSAGE
     // ----------------------------------------------------
     if (isGroup) {
-      const config = getConfig();
-      
       // Always mark group messages as read (simulates active device consumption)
-      await markRead(remoteJid);
+      await markRead(config, remoteJid);
 
       // Check if group responses are active (Only in Week 2, currentDay >= 8)
       if (config.warmupEnabled && config.groupsEnabled && config.currentDay >= 8) {
         const today = db.getTodayDateString();
-        const todayStats = db.getStatsForDate(today);
+        const todayStats = db.getStatsForInstanceDate(instance.id, today);
 
         // Check if we haven't hit the daily group reply quota
         if (todayStats.group < config.groupReplyLimitPerDay) {
           // Ask Gemini if this warrants a response
           const decision = await generateGroupReply(senderName, messageText);
-          
+
           if (decision && decision.toUpperCase() !== 'SKIP') {
             console.log(`Responding to group (${remoteJid}) message: "${decision}"`);
-            await db.addLog('info', `Group reaction determined for message from ${senderName}`, messageText, remoteJid);
-            
+            await db.addLog('info', `Group reaction determined for message from ${senderName}`, messageText, remoteJid, false, instance.id);
+
             // Wait a random delay (4 to 10 seconds) to simulate reading and writing in group
             const groupTypeDelay = Math.floor(Math.random() * 6000) + 4000;
             setTimeout(async () => {
-              await sendMessage(remoteJid, decision, false);
-              await db.incrementStat('group'); // Increment group reply count
-              await db.addLog('success', `Reacted in group ${remoteJid}: "${decision}"`);
+              await sendMessage(config, remoteJid, decision, false);
+              await db.incrementInstanceStat(instance.id, 'group'); // Increment group reply count
+              await db.addLog('success', `Reacted in group ${remoteJid}: "${decision}"`, '', '', false, instance.id);
             }, groupTypeDelay);
           }
         }
@@ -132,13 +157,22 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
     // If sender is NOT a guided contact, ignore their messages to avoid out-of-context replies.
     if (!contact || !contact.enabled) {
       console.log(`Ignoring message from non-guided/disabled number ${phone}: "${messageText}"`);
-      await db.addLog('info', `Ignored message from unguided number: ${phone}`, messageText, phone);
+      await db.addLog('info', `Ignored message from unguided number: ${phone}`, messageText, phone, false, instance.id);
       return res.json({ status: 'ignored', reason: 'Not an active guided contact' });
     }
 
+    // Guard against a misconfigured webhook: this contact belongs to a
+    // different instance than the one this payload arrived on. Replying
+    // here would use the wrong number's persona/quota/day state.
+    if (contact.instanceId && contact.instanceId !== instance.id) {
+      console.warn(`Webhook mismatch: contact ${phone} belongs to instance ${contact.instanceId}, but this message arrived on instance ${instance.id}.`);
+      await db.addLog('warning', `Webhook instance mismatch for ${phone}: contact belongs to a different instance. Ignored.`, messageText, phone, false, instance.id);
+      return res.json({ status: 'ignored', reason: 'Contact belongs to a different bot instance' });
+    }
+
     // Log the incoming message and update statistics immediately
-    await db.incrementStat('incoming');
-    await db.addLog('message', `Received: ${messageText}`, messageText, phone, false);
+    await db.incrementInstanceStat(instance.id, 'incoming');
+    await db.addLog('message', `Received: ${messageText}`, messageText, phone, false, instance.id);
 
     // Update contact status
     await db.updateContact(phone, {
@@ -151,36 +185,35 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
     // stop always gets an immediate response no matter what state the bot
     // is otherwise in. Opportunistically drops stale (>15min unconfirmed)
     // pending requests from any phone on every incoming message, so no
-    // separate sweep job is needed.
+    // separate sweep job is needed. pendingOptOuts lives on the instance
+    // record now (it's this number's own pending-request queue).
     const OPT_OUT_CONFIRM_WINDOW_MS = 15 * 60 * 1000;
-    const optOutSettings = db.getSettings();
-    const activePendingOptOuts = (optOutSettings.pendingOptOuts || [])
+    const activePendingOptOuts = (config.pendingOptOuts || [])
       .filter(p => Date.now() - new Date(p.requestedAt).getTime() < OPT_OUT_CONFIRM_WINDOW_MS);
     const pendingOptOut = activePendingOptOuts.find(p => p.phone === phone);
 
     if (pendingOptOut) {
       const isConfirmed = messageText.trim().replace(/[.!?,]/g, '') === 'כן תפסיק';
-      await db.saveSettings({ pendingOptOuts: activePendingOptOuts.filter(p => p.phone !== phone) });
+      await db.updateInstance(instance.id, { pendingOptOuts: activePendingOptOuts.filter(p => p.phone !== phone) });
       if (isConfirmed) {
         await db.optOutContact(phone);
-        await sendMessage(phone, 'סבבה, מבין. ביי 👋 אם תתגעגע אתה יודע איפה למצוא אותי');
-        await db.addLog('success', `Contact ${contact.name || phone} opted out via chat command.`);
+        await sendMessage(config, phone, 'סבבה, מבין. ביי 👋 אם תתגעגע אתה יודע איפה למצוא אותי');
+        await db.addLog('success', `Contact ${contact.name || phone} opted out via chat command.`, '', '', false, instance.id);
         return res.json({ status: 'success', detail: 'Contact opted out' });
       }
       // Not a confirmation - pending already cleared above, fall through to normal reply handling.
     } else if (messageText.includes('תפסיק לכתוב לי')) {
-      await db.saveSettings({ pendingOptOuts: [...activePendingOptOuts, { phone, requestedAt: new Date().toISOString() }] });
-      await sendMessage(phone, "רגע רגע יא חבר, אתה רציני? 😢 תכתוב לי 'כן תפסיק' ואני נעלם מהחיים שלך לתמיד");
+      await db.updateInstance(instance.id, { pendingOptOuts: [...activePendingOptOuts, { phone, requestedAt: new Date().toISOString() }] });
+      await sendMessage(config, phone, "רגע רגע יא חבר, אתה רציני? 😢 תכתוב לי 'כן תפסיק' ואני נעלם מהחיים שלך לתמיד");
       return res.json({ status: 'success', detail: 'Opt-out confirmation requested' });
     }
 
-    const config = getConfig();
     if (!config.warmupEnabled) {
-      console.log(`Warmup is disabled. Read receipt will be sent to ${phone} after delay, but reply skipped.`);
+      console.log(`Warmup is disabled for instance ${instance.id}. Read receipt will be sent to ${phone} after delay, but reply skipped.`);
       setTimeout(async () => {
         try {
-          await sendTypingState(phone, 'available', 1500);
-          await markRead(remoteJid, data.key);
+          await sendTypingState(config, phone, 'available', 1500);
+          await markRead(config, remoteJid, data.key);
         } catch (e) {
           console.error('Failed to mark read in disabled mode:', e);
         }
@@ -191,30 +224,29 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
     // Check emergency hard ceiling for incoming replies (1.5x daily quota)
     // Regular dailyQuota stops active warmup initiations in scheduler, but we allow replying to existing conversations up to 1.5x quota!
     const todayStr = db.getTodayDateString();
-    const stats = db.getStatsForDate(todayStr);
-    const dailyQuota = getDailyQuota();
+    const stats = db.getStatsForInstanceDate(instance.id, todayStr);
+    const dailyQuota = getDailyQuota(instance.id);
     const emergencyQuota = Math.floor(dailyQuota * 1.5);
     if (stats.outgoing >= emergencyQuota) {
-      await handleLimitStop(phone, remoteJid, data.key, contact.name, `Emergency quota reached (${stats.outgoing}/${emergencyQuota})`);
+      await handleLimitStop(config, phone, remoteJid, data.key, contact.name, `Emergency quota reached (${stats.outgoing}/${emergencyQuota})`);
       return res.json({ status: 'success', detail: 'Emergency quota reached' });
     }
 
     // Check per-contact daily conversation depth cap with human variance (-1, 0, +1 around base limit)
-    const contactCap = computeDynamicContactCap(phone, config);
+    const contactCap = computeDynamicContactCap(phone, instance.id);
     if (contactCap.reached) {
-      await handleLimitStop(phone, remoteJid, data.key, contact.name, `Conversation depth reached (${contactCap.count}/${contactCap.cap})`);
+      await handleLimitStop(config, phone, remoteJid, data.key, contact.name, `Conversation depth reached (${contactCap.count}/${contactCap.cap})`);
       return res.json({ status: 'success', detail: 'Max daily contact depth reached' });
     }
 
     // Check night rest mode (only if enabled in dashboard settings)
-    if (config.nightRestEnabled && isNightTime()) {
-      await scheduler.queueNightMessage(phone, messageText, contact.name, data.key, remoteJid);
+    if (config.nightRestEnabled && isNightTime(instance.id)) {
+      await schedulerManager.getWorker(instance.id).queueNightMessage(phone, messageText, contact.name, data.key, remoteJid);
       return res.json({ status: 'success', detail: 'Queued for morning' });
     }
 
     // Check if we should simulate being "busy" (ghosting) for this reply
-    const settings = db.getSettings();
-    const delayedReplies = settings.delayedReplies || [];
+    const delayedReplies = config.delayedReplies || [];
     const existingReplyIdx = delayedReplies.findIndex(r => r.phone === phone);
     const isAlreadyDelayed = existingReplyIdx !== -1;
 
@@ -224,14 +256,14 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
         // Update the queued reply with the latest message text and key
         delayedReplies[existingReplyIdx].messageText = messageText;
         delayedReplies[existingReplyIdx].msgKey = data.key;
-        await db.saveSettings({ delayedReplies });
-        await db.addLog('info', `Contact ${contact.name || phone} is already in busy/away delay. Appending new message to queue.`, messageText, phone);
+        await db.updateInstance(instance.id, { delayedReplies });
+        await db.addLog('info', `Contact ${contact.name || phone} is already in busy/away delay. Appending new message to queue.`, messageText, phone, false, instance.id);
       } else {
         const delayMinutes = Math.floor(Math.random() * (config.maxBusyDelayMinutes - config.minBusyDelayMinutes + 1)) + config.minBusyDelayMinutes;
         const sendAfter = new Date(Date.now() + delayMinutes * 60000).toISOString();
-        
-        await scheduler.queueDelayedReply(phone, remoteJid, messageText, contact.name, data.key, sendAfter);
-        await db.addLog('info', `Simulating busy/away status: Delaying reply to ${contact.name || phone} by ${delayMinutes} minutes (Will reply around ${new Date(sendAfter).toLocaleTimeString('he-IL')}).`, messageText, phone);
+
+        await schedulerManager.getWorker(instance.id).queueDelayedReply(phone, remoteJid, messageText, contact.name, data.key, sendAfter);
+        await db.addLog('info', `Simulating busy/away status: Delaying reply to ${contact.name || phone} by ${delayMinutes} minutes (Will reply around ${new Date(sendAfter).toLocaleTimeString('he-IL')}).`, messageText, phone, false, instance.id);
       }
       return res.json({ status: 'success', detail: `Delayed reply` });
     }
@@ -240,7 +272,7 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
     // to return the HTTP response immediately to the Evolution API webhook dispatcher
     setTimeout(async () => {
       try {
-        await db.addLog('info', `Starting humanized reply sequence for ${phone}`);
+        await db.addLog('info', `Starting humanized reply sequence for ${phone}`, '', '', false, instance.id);
 
         // 1. Wait a random human delay (3 to 7 seconds) before opening the app
         const readDelay = Math.floor(Math.random() * 4000) + 3000;
@@ -248,55 +280,55 @@ app.post(['/webhook/:secret', '/api/webhook/:secret', '/webhook', '/api/webhook'
         await new Promise(resolve => setTimeout(resolve, readDelay));
 
         // 2. Go "Online" (available) to simulate opening the app
-        await db.addLog('info', `Simulating user online (available) for ${phone}`);
-        await sendTypingState(phone, 'available', 1500);
+        await db.addLog('info', `Simulating user online (available) for ${phone}`, '', '', false, instance.id);
+        await sendTypingState(config, phone, 'available', 1500);
 
         // 3. Mark message as read (V כחול)
-        await db.addLog('info', `Marking message as read (blue checks) for ${phone}`);
-        await markRead(remoteJid, data.key);
+        await db.addLog('info', `Marking message as read (blue checks) for ${phone}`, '', '', false, instance.id);
+        await markRead(config, remoteJid, data.key);
 
         // 4. Wait a short delay before starting to type (simulate reading: 1.5 seconds)
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         // 5. Generate natural response using Gemini
-        await db.addLog('info', `Calling Gemini to generate reply for ${phone}`);
+        await db.addLog('info', `Calling Gemini to generate reply for ${phone}`, '', '', false, instance.id);
         const logs = db.getLogs().filter(log => log.phone === phone);
         const history = logs.slice(0, 10).reverse();
         const replyText = await generateReply(contact.name, messageText, history, config.currentDay, contact.notes);
-        await db.addLog('info', `Gemini response generated for ${phone}: "${replyText}"`);
+        await db.addLog('info', `Gemini response generated for ${phone}: "${replyText}"`, '', '', false, instance.id);
 
         // 6. Send reaction or message reply
         const reactionMatch = replyText.match(/^\[REACTION:\s*(.+)\]$/);
         if (reactionMatch) {
           const emoji = reactionMatch[1].trim();
           if (data.key?.id) {
-            await db.addLog('info', `Sending emoji reaction "${emoji}" to ${phone}`);
-            const success = await sendReaction(remoteJid, emoji, data.key);
+            await db.addLog('info', `Sending emoji reaction "${emoji}" to ${phone}`, '', '', false, instance.id);
+            const success = await sendReaction(config, remoteJid, emoji, data.key);
             if (!success) {
               // Fallback to normal text message containing the emoji
               console.log(`sendReaction failed. Falling back to sending emoji "${emoji}" as text.`);
-              await sendMessage(phone, emoji, true);
+              await sendMessage(config, phone, emoji, true);
             }
           }
         } else {
           // sendMessage will simulate typing based on text length (2s - 6s)
-          await db.addLog('info', `Sending text reply to ${phone}`);
-          await sendMessage(phone, replyText, true);
+          await db.addLog('info', `Sending text reply to ${phone}`, '', '', false, instance.id);
+          await sendMessage(config, phone, replyText, true);
         }
 
         // 7. Go "Offline" (unavailable) to simulate closing the app
-        await db.addLog('info', `Simulating user offline (unavailable) for ${phone}`);
-        await sendTypingState(phone, 'unavailable', 500);
+        await db.addLog('info', `Simulating user offline (unavailable) for ${phone}`, '', '', false, instance.id);
+        await sendTypingState(config, phone, 'unavailable', 500);
       } catch (err) {
         console.error('Error in asynchronous reply pipeline:', err);
-        await db.addLog('error', `Async reply pipeline failed: ${err.message}`);
+        await db.addLog('error', `Async reply pipeline failed: ${err.message}`, '', '', false, instance.id);
       }
     }, 100);
 
     return res.json({ status: 'success', type: 'queued_reply' });
   } catch (error) {
     console.error('Error handling webhook message:', error);
-    await db.addLog('error', `Webhook handler failed: ${error.message}`);
+    await db.addLog('error', `Webhook handler failed: ${error.message}`, '', '', false, instance.id);
     return res.status(500).json({ error: error.message });
   }
 });
@@ -319,16 +351,40 @@ function sanitizeConfigForPublic(config) {
 }
 
 /**
+ * Resolves an instanceId from a request (?instanceId= query param), falling
+ * back to the current default instance. This keeps every route below
+ * working exactly as before for the one existing (now default) instance
+ * without requiring the admin UI to already know about multi-tenancy - the
+ * Instances tab (a later step) is what actually lets an admin pick a
+ * specific non-default instance via this same param.
+ */
+function resolveInstanceOrDefault(req) {
+  const requested = req.query.instanceId || req.body?.instanceId;
+  if (requested) {
+    const inst = db.getInstanceById(requested);
+    if (inst) return inst;
+  }
+  return db.getDefaultInstance();
+}
+
+/**
  * Get current configuration, status, stats for today, and queued item counts
+ * for one bot instance (defaults to the default instance if none specified).
  */
 app.get('/api/status', (req, res) => {
-  const config = sanitizeConfigForPublic(getConfig());
+  const instance = resolveInstanceOrDefault(req);
+  if (!instance) {
+    return res.status(500).json({ error: 'No bot instance is configured.' });
+  }
+  const instanceConfig = getConfig(instance.id);
+  const globalConfig = getGlobalConfig();
+  const config = sanitizeConfigForPublic({ ...globalConfig, ...instanceConfig });
   const today = db.getTodayDateString();
-  const stats = db.getStatsForDate(today);
-  const dailyQuota = getDailyQuota();
-  const settings = db.getSettings();
+  const stats = db.getStatsForInstanceDate(instance.id, today);
+  const dailyQuota = getDailyQuota(instance.id);
 
   res.json({
+    instanceId: instance.id,
     config,
     stats: {
       todayDate: today,
@@ -338,11 +394,11 @@ app.get('/api/status', (req, res) => {
       total: stats.total,
       quota: dailyQuota
     },
-    nightQueueLength: (settings.nightQueue || []).length,
-    delayedReplies: settings.delayedReplies || [],
-    nightQueue: settings.nightQueue || [],
-    dailyQuotaReached: isDailyQuotaReached(),
-    isNight: isNightTime()
+    nightQueueLength: (instanceConfig.nightQueue || []).length,
+    delayedReplies: instanceConfig.delayedReplies || [],
+    nightQueue: instanceConfig.nightQueue || [],
+    dailyQuotaReached: isDailyQuotaReached(instance.id),
+    isNight: isNightTime(instance.id)
   });
 });
 
@@ -350,11 +406,10 @@ app.get('/api/status', (req, res) => {
  * Middleware to verify Admin PIN for state mutating actions
  */
 function requireAdmin(req, res, next) {
-  const config = getConfig();
-  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'Liran!192837';
+  const config = getGlobalConfig();
   const providedPin = req.headers['x-admin-pin'] || req.query.pin || req.body?.pin;
-  
-  if (!providedPin || providedPin !== requiredPin) {
+
+  if (!providedPin || providedPin !== config.adminPin) {
     return res.status(403).json({ error: 'Unauthorized: Admin PIN required to perform this action.' });
   }
   next();
@@ -364,49 +419,43 @@ function requireAdmin(req, res, next) {
  * Verify if provided PIN matches adminPin
  */
 app.post('/api/verify-pin', (req, res) => {
-  const config = getConfig();
-  const requiredPin = config.adminPin || process.env.ADMIN_PIN || 'Liran!192837';
+  const config = getGlobalConfig();
   const providedPin = req.headers['x-admin-pin'] || req.body?.pin;
-  res.json({ success: providedPin === requiredPin });
+  res.json({ success: providedPin === config.adminPin });
 });
 
 /**
- * Admin-only: fetch the raw secret values (Gemini/Evolution credentials) so the
- * settings form can be populated. Never exposed via the public /api/status route.
+ * Admin-only: fetch the raw secret values (Gemini key is global; Evolution
+ * credentials belong to one specific instance) so the settings form can be
+ * populated. Never exposed via the public /api/status route.
  */
 app.get('/api/settings/secrets', requireAdmin, (req, res) => {
-  const config = getConfig();
+  const globalConfig = getGlobalConfig();
+  const instance = resolveInstanceOrDefault(req);
+  const instanceConfig = instance ? getConfig(instance.id) : null;
   res.json({
-    geminiApiKey: config.geminiApiKey,
-    evolutionToken: config.evolutionToken,
-    webhookSecret: config.webhookSecret
+    geminiApiKey: globalConfig.geminiApiKey,
+    evolutionToken: instanceConfig?.evolutionToken || '',
+    webhookSecret: instanceConfig?.webhookSecret || ''
   });
 });
 
 /**
- * Save configuration settings
+ * Save GLOBAL configuration settings only (Gemini key, admin PIN,
+ * leaderboard-wide policy). Per-instance settings (Evolution
+ * credentials, warmup day/quota, night rest, etc.) now go through
+ * PUT /api/instances/:id below - see the Instances admin tab.
  */
 app.post('/api/settings', requireAdmin, async (req, res) => {
   try {
-    const oldSettings = db.getSettings();
-    const updated = await db.saveSettings(req.body);
-    
-    // If warmup was toggled ON, run active warmup cycle within 5 seconds for responsive testing
-    if (req.body.warmupEnabled === true && oldSettings.warmupEnabled !== true) {
-      console.log('Warmup toggled ON. Rescheduling next run to execute in 5 seconds...');
-      await scheduler.scheduleNextWarmup(5000);
-    } else if (req.body.activeMinIntervalMinutes !== undefined || req.body.activeMaxIntervalMinutes !== undefined) {
-      // If interval configs changed, reschedule the next warmup to apply new intervals
-      await scheduler.scheduleNextWarmup();
+    const allowedGlobalFields = ['geminiApiKey', 'adminPin', 'leaderboardRetentionDays', 'leaderboardMinVotesToKeep', 'leaderboardTopNAlwaysKept', 'leaderboardMinMessagesToPublish', 'leaderboardTopics'];
+    const globalUpdates = {};
+    for (const field of allowedGlobalFields) {
+      if (req.body[field] !== undefined) globalUpdates[field] = req.body[field];
     }
+    const updated = await db.saveSettings(globalUpdates);
 
-    // If busy simulation was toggled OFF, immediately process all queued delayed replies
-    if (req.body.busySimulationEnabled === false && oldSettings.busySimulationEnabled !== false) {
-      console.log('Busy simulation toggled OFF. Immediately processing all delayed replies...');
-      scheduler.processDelayedReplies();
-    }
-
-    await db.addLog('success', 'System configurations updated via dashboard.');
+    await db.addLog('success', 'Global configurations updated via dashboard.');
     res.json({ success: true, settings: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -414,7 +463,7 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
 });
 
 /**
- * Reset all logs, stats, contact counters, and queues
+ * Reset all logs, stats, contact counters, and every instance's queues
  */
 app.post('/api/reset', requireAdmin, async (req, res) => {
   try {
@@ -422,7 +471,7 @@ app.post('/api/reset', requireAdmin, async (req, res) => {
     db.logs = [];
     await db._saveFile('logs.json', db.logs);
 
-    // 2. Clear stats
+    // 2. Clear stats (works regardless of the per-instance nesting shape)
     db.stats = {};
     await db._saveFile('stats.json', db.stats);
 
@@ -434,10 +483,11 @@ app.post('/api/reset', requireAdmin, async (req, res) => {
     }));
     await db._saveFile('contacts.json', db.contacts);
 
-    // 4. Clear settings queues
-    db.settings.nightQueue = [];
-    db.settings.delayedReplies = [];
-    await db.saveSettings(db.settings);
+    // 4. Clear every instance's queues (nightQueue/delayedReplies now live
+    // on the instance record, not the old global settings blob)
+    for (const inst of db.getInstances()) {
+      await db.updateInstance(inst.id, { nightQueue: [], delayedReplies: [] });
+    }
 
     await db.addLog('success', 'המערכת אותחלה בהצלחה! כל הנתונים, הסטטיסטיקות והתורים אופסו.');
 
@@ -461,33 +511,33 @@ app.post('/api/chat/send', requireAdmin, async (req, res) => {
     if (!contact) {
       return res.status(404).json({ error: 'Contact not found in guided contacts' });
     }
+    const instance = db.getInstanceById(contact.instanceId) || db.getDefaultInstance();
+    const config = getConfig(instance.id);
 
     // 1. Send the actual message via Evolution API (this also logs to DB and updates contact stats)
-    await sendMessage(phone, message, true);
+    await sendMessage(config, phone, message, true);
 
-    // 2. Override/Clear any queued replies for this contact
-    const settings = db.getSettings();
+    // 2. Override/Clear any queued replies for this contact (both queues
+    // live on the contact's own instance record)
     let queueChanged = false;
 
-    // Clear delayedReplies
-    let delayedReplies = settings.delayedReplies || [];
+    let delayedReplies = config.delayedReplies || [];
     const delayedIdx = delayedReplies.findIndex(r => r.phone === phone);
     if (delayedIdx !== -1) {
-      delayedReplies.splice(delayedIdx, 1);
+      delayedReplies = delayedReplies.filter((_, i) => i !== delayedIdx);
       queueChanged = true;
     }
 
-    // Clear nightQueue
-    let nightQueue = settings.nightQueue || [];
+    let nightQueue = config.nightQueue || [];
     const nightIdx = nightQueue.findIndex(q => q.phone === phone);
     if (nightIdx !== -1) {
-      nightQueue.splice(nightIdx, 1);
+      nightQueue = nightQueue.filter((_, i) => i !== nightIdx);
       queueChanged = true;
     }
 
     if (queueChanged) {
-      await db.saveSettings({ delayedReplies, nightQueue });
-      await db.addLog('info', `Human override: Cleared queued automated replies for ${contact.name || phone} due to manual message.`, '', phone);
+      await db.updateInstance(instance.id, { delayedReplies, nightQueue });
+      await db.addLog('info', `Human override: Cleared queued automated replies for ${contact.name || phone} due to manual message.`, '', phone, false, instance.id);
     }
 
     res.json({ success: true, message: 'Message sent and queues cleared' });
@@ -498,11 +548,21 @@ app.post('/api/chat/send', requireAdmin, async (req, res) => {
 });
 
 /**
- * Trigger a manual WhatsApp status post (image or text)
+ * Trigger a manual WhatsApp status post (image or text) for one instance
+ * (defaults to the default instance) - status posting is inherently
+ * per-WhatsApp-account.
  */
 app.post('/api/status/trigger', requireAdmin, async (req, res) => {
   try {
-    const result = await scheduler.triggerManualStatusPost();
+    const instance = resolveInstanceOrDefault(req);
+    if (!instance) {
+      return res.status(500).json({ error: 'No bot instance is configured.' });
+    }
+    const worker = schedulerManager.getWorker(instance.id);
+    if (!worker) {
+      return res.status(500).json({ error: `No running scheduler worker for instance ${instance.id}.` });
+    }
+    const result = await worker.triggerManualStatusPost();
     res.json({ success: true, result });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -510,10 +570,12 @@ app.post('/api/status/trigger', requireAdmin, async (req, res) => {
 });
 
 /**
- * Perform active connection diagnostics for Gemini and Evolution APIs
+ * Perform active connection diagnostics for Gemini (global) and Evolution
+ * (per-instance, defaults to the default instance) APIs
  */
 app.get('/api/test-connection', async (req, res) => {
-  const config = getConfig();
+  const instance = resolveInstanceOrDefault(req);
+  const config = instance ? getConfig(instance.id) : null;
   const report = {
     gemini: { success: false, error: null },
     evolution: { success: false, state: 'unknown', error: null }
@@ -533,21 +595,23 @@ app.get('/api/test-connection', async (req, res) => {
   }
 
   // 2. Test Evolution API
-  if (!config.evolutionUrl || !config.evolutionToken || !config.evolutionInstance) {
-    report.evolution.error = 'Evolution credentials are not configured in settings.';
+  if (!config) {
+    report.evolution.error = 'No bot instance is configured.';
+  } else if (!config.evolutionUrl || !config.evolutionToken || !config.evolutionInstance) {
+    report.evolution.error = `Evolution credentials are not configured for instance "${config.label}".`;
   } else {
     try {
       const cleanUrl = config.evolutionUrl.replace(/\/$/, '');
       const url = `${cleanUrl}/instance/connectionState/${config.evolutionInstance}`;
-      console.log(`Checking Evolution connection state: ${url}`);
-      
+      console.log(`Checking Evolution connection state for instance ${config.id}: ${url}`);
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           'apikey': config.evolutionToken
         }
       });
-      
+
       if (!response.ok) {
         report.evolution.error = `Evolution API error (${response.status}): ${await response.text()}`;
       } else {
@@ -566,8 +630,99 @@ app.get('/api/test-connection', async (req, res) => {
 
   res.json({
     success: report.gemini.success && report.evolution.success,
+    instanceId: instance?.id || null,
     report
   });
+});
+
+// ----------------------------------------------------
+// BOT INSTANCES (WhatsApp numbers) - admin only
+// ----------------------------------------------------
+
+/**
+ * Strips secrets from an instance record before it's sent to the admin UI's
+ * list view (the dedicated secrets route below returns them on demand).
+ */
+function sanitizeInstanceForAdmin(instance) {
+  const { evolutionToken, webhookSecret, ...rest } = instance;
+  return { ...rest, hasEvolutionToken: !!evolutionToken, hasWebhookSecret: !!webhookSecret };
+}
+
+app.get('/api/instances', requireAdmin, (req, res) => {
+  res.json(db.getInstances().map(sanitizeInstanceForAdmin));
+});
+
+app.get('/api/instances/:id/secrets', requireAdmin, (req, res) => {
+  const instance = db.getInstanceById(req.params.id);
+  if (!instance) {
+    return res.status(404).json({ error: 'Instance not found' });
+  }
+  res.json({
+    evolutionUrl: instance.evolutionUrl,
+    evolutionToken: instance.evolutionToken,
+    evolutionInstance: instance.evolutionInstance,
+    webhookSecret: instance.webhookSecret
+  });
+});
+
+app.post('/api/instances', requireAdmin, async (req, res) => {
+  try {
+    const newInstance = await db.addInstance(req.body);
+    await schedulerManager.startWorkerForInstance(newInstance.id);
+    await db.addLog('success', `Added bot instance: ${newInstance.label} (${newInstance.id})`);
+    res.json({ success: true, instance: sanitizeInstanceForAdmin(newInstance) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/instances/:id', requireAdmin, async (req, res) => {
+  try {
+    const before = db.getInstanceById(req.params.id);
+    const updated = await db.updateInstance(req.params.id, req.body);
+
+    // If warmup was toggled ON for this instance, run its active warmup
+    // cycle within 5 seconds for responsive testing (mirrors the old
+    // single-instance /api/settings behavior).
+    const worker = schedulerManager.getWorker(req.params.id);
+    if (worker) {
+      if (req.body.warmupEnabled === true && before?.warmupEnabled !== true) {
+        console.log(`Warmup toggled ON for instance ${req.params.id}. Rescheduling next run to execute in 5 seconds...`);
+        await worker.scheduleNextWarmup(5000);
+      } else if (req.body.activeMinIntervalMinutes !== undefined || req.body.activeMaxIntervalMinutes !== undefined) {
+        await worker.scheduleNextWarmup();
+      }
+      if (req.body.busySimulationEnabled === false && before?.busySimulationEnabled !== false) {
+        console.log(`Busy simulation toggled OFF for instance ${req.params.id}. Immediately processing all delayed replies...`);
+        worker.processDelayedReplies();
+      }
+    }
+
+    res.json({ success: true, instance: sanitizeInstanceForAdmin(updated) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/instances/:id/set-default', requireAdmin, async (req, res) => {
+  try {
+    const updated = await db.setDefaultInstance(req.params.id);
+    await db.addLog('success', `Instance "${updated.label}" set as default.`);
+    res.json({ success: true, instance: sanitizeInstanceForAdmin(updated) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/instances/:id', requireAdmin, async (req, res) => {
+  try {
+    const removed = await db.deleteInstance(req.params.id);
+    schedulerManager.stopWorkerForInstance(req.params.id);
+    await db.addLog('warning', `Deleted bot instance: ${removed.label} (${removed.id})`);
+    res.json({ success: true, removed: sanitizeInstanceForAdmin(removed) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 /**
@@ -578,20 +733,21 @@ app.get('/api/contacts', requireAdmin, (req, res) => {
 });
 
 /**
- * Add a new guided contact
+ * Add a new guided contact. instanceId is optional - defaults to the
+ * current default instance (see db.addContact).
  */
 app.post('/api/contacts', requireAdmin, async (req, res) => {
   try {
-    const { phone, name, notes, enabled } = req.body;
+    const { phone, name, notes, enabled, instanceId } = req.body;
     if (!phone) {
       return res.status(400).json({ error: 'Phone number is required' });
     }
-    
+
     // Clean number: keep digits only
     const cleanPhone = phone.replace(/\D/g, '');
-    const newContact = await db.addContact({ phone: cleanPhone, name, notes, enabled });
-    
-    await db.addLog('success', `Added contact: ${name} (${cleanPhone})`);
+    const newContact = await db.addContact({ phone: cleanPhone, name, notes, enabled, instanceId });
+
+    await db.addLog('success', `Added contact: ${name} (${cleanPhone})`, '', '', false, newContact.instanceId);
     res.json({ success: true, contact: newContact });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -653,8 +809,17 @@ app.post('/api/test/starter', requireAdmin, async (req, res) => {
     if (!phone) {
       return res.status(400).json({ error: 'Phone number is required' });
     }
-    
-    const message = await scheduler.triggerManualStarter(phone);
+
+    const contact = db.getContacts().find(c => c.phone === phone);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    const worker = schedulerManager.getWorker(contact.instanceId) || schedulerManager.getWorker(db.getDefaultInstance()?.id);
+    if (!worker) {
+      return res.status(500).json({ error: 'No running scheduler worker for this contact\'s instance.' });
+    }
+
+    const message = await worker.triggerManualStarter(phone);
     res.json({ success: true, message });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -663,11 +828,13 @@ app.post('/api/test/starter', requireAdmin, async (req, res) => {
 
 /**
  * Simulator Endpoint: Mock an incoming message from a contact/group.
+ * Hits the legacy no-instanceId webhook alias (resolves to the default
+ * instance) unless an instanceId is explicitly provided.
  */
 app.post('/api/test/incoming', requireAdmin, async (req, res) => {
   try {
-    const { phone, message, isGroup, senderName } = req.body;
-    
+    const { phone, message, isGroup, senderName, instanceId } = req.body;
+
     if (!phone || !message) {
       return res.status(400).json({ error: 'Phone and message are required' });
     }
@@ -690,14 +857,27 @@ app.post('/api/test/incoming', requireAdmin, async (req, res) => {
 
     // Forward to internal webhook flow asynchronously
     // Using fetch locally to simulate external POST request
-    const config = getConfig();
-    const serverPort = config.port;
+    const globalConfig = getGlobalConfig();
+    const serverPort = globalConfig.port;
+    const targetInstance = instanceId ? db.getInstanceById(instanceId) : db.getDefaultInstance();
+    if (!targetInstance) {
+      return res.status(500).json({ error: 'No bot instance is configured.' });
+    }
+    const webhookSecret = getConfig(targetInstance.id).webhookSecret;
+    // Must always be exactly 3 path segments (webhook/instanceId/secret) -
+    // a 2-segment /webhook/:instanceId would be indistinguishable from (and
+    // permanently shadowed by) the legacy 2-segment /webhook/:secret route
+    // registered below, since Express can't tell them apart by shape alone.
+    // When no real secret is configured, the segment is just an unchecked
+    // placeholder - the handler only validates it when config.webhookSecret
+    // is actually set.
+    const webhookPath = `/webhook/${targetInstance.id}/${webhookSecret || 'no-secret-configured'}`;
 
-    const response = await fetch(`http://localhost:${serverPort}/webhook`, {
+    const response = await fetch(`http://localhost:${serverPort}${webhookPath}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(config.webhookSecret ? { 'x-webhook-secret': config.webhookSecret } : {})
+        ...(webhookSecret ? { 'x-webhook-secret': webhookSecret } : {})
       },
       body: JSON.stringify(mockPayload)
     });
@@ -745,9 +925,10 @@ const voteLimiter = rateLimit({
 
 /**
  * Public: list published leaderboard chats. Only ever returns fields
- * filtered through db.toPublicChat() - never contactPhone or other
- * internal fields. contactStatus is computed here (server.js) and passed
- * into the db layer so database.js never needs to import config.js.
+ * filtered through db.toPublicChat() - never contactPhone, instanceId, or
+ * other internal fields, regardless of which underlying bot number actually
+ * handled the conversation. contactStatus is computed here (server.js) and
+ * passed into the db layer so database.js never needs to import config.js.
  */
 app.get('/api/public/chats', (req, res) => {
   res.json(db.getPublishedChats(getContactStatus));
@@ -773,17 +954,22 @@ app.post('/api/public/vote', voterIdentity, voteLimiter, async (req, res) => {
 });
 
 /**
- * Public: signup form config - conversation topics and a coarse "bot status"
- * (night rest / weekend) computed server-side from Israel local time, since
- * a visitor's own browser clock/timezone can't be trusted for this.
+ * Public: signup form config - conversation topics (global) and a coarse
+ * "bot status" (night rest / weekend) computed server-side from Israel
+ * local time, since a visitor's own browser clock/timezone can't be
+ * trusted for this. Sourced from the default instance, since the public
+ * page presents Nehorai as one unified persona with one coherent
+ * awake/asleep signal, regardless of which instance ends up handling any
+ * given conversation.
  */
 app.get('/api/public/config', (req, res) => {
-  const config = getConfig();
+  const globalConfig = getGlobalConfig();
+  const defaultInstance = db.getDefaultInstance();
   const { hour, weekdayNum } = getIsraelTime();
   res.json({
-    topics: config.leaderboardTopics,
+    topics: globalConfig.leaderboardTopics,
     botStatus: {
-      isNight: isNightTime(),
+      isNight: defaultInstance ? isNightTime(defaultInstance.id) : false,
       weekdayNum, // Sun=0 ... Sat=6
       hour
     }
@@ -797,6 +983,39 @@ const signupLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many signup attempts, slow down and try again in a minute.' }
 });
+
+/**
+ * Load-balances new leaderboard signups across active-warmup instances so
+ * no single client number gets hammered while others sit idle - picks the
+ * non-default, warmup-enabled, currently-eligible (not resting, not at
+ * today's quota) instance with the most remaining quota today. Falls back
+ * to the default instance if none qualify (all client numbers resting/
+ * capped/disabled, or none exist yet) - the whole point of the default
+ * number is that the public persona is never "unavailable".
+ *
+ * Only matters for a BRAND-NEW phone - a returning visitor always keeps
+ * their original instance regardless of what this returns, enforced inside
+ * db.registerLeaderboardSignup itself.
+ */
+function pickInstanceForSignup() {
+  const today = db.getTodayDateString();
+  const remainingQuota = (inst) => getDailyQuota(inst.id) - db.getStatsForInstanceDate(inst.id, today).outgoing;
+
+  const candidates = db.getInstances().filter(inst => {
+    if (inst.isDefault) return false;
+    const config = getConfig(inst.id);
+    if (!config.warmupEnabled) return false;
+    if (config.nightRestEnabled && isNightTime(inst.id)) return false;
+    if (isDailyQuotaReached(inst.id)) return false;
+    return true;
+  });
+
+  if (candidates.length === 0) {
+    return db.getDefaultInstance();
+  }
+
+  return candidates.reduce((best, inst) => remainingQuota(inst) > remainingQuota(best) ? inst : best);
+}
 
 /**
  * Public: self-serve signup for the leaderboard. Requires explicit
@@ -816,15 +1035,16 @@ app.post('/api/public/signup', signupLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Explicit consent is required to sign up.' });
     }
 
-    const config = getConfig();
-    if (!config.botWhatsappNumber) {
+    const targetInstance = pickInstanceForSignup();
+    if (!targetInstance || !targetInstance.phone) {
       return res.status(500).json({ error: 'Bot WhatsApp number is not configured yet.' });
     }
 
-    await db.registerLeaderboardSignup({ phone, displayAlias, topic });
+    const contact = await db.registerLeaderboardSignup({ phone, displayAlias, topic, instanceId: targetInstance.id });
+    const assignedInstance = db.getInstanceById(contact.instanceId) || targetInstance;
 
     const greeting = `היי! זה ${displayAlias}, נרשמתי דרך העמוד${topic ? ` (${topic})` : ''} 👋`;
-    const waLink = `https://wa.me/${config.botWhatsappNumber}?text=${encodeURIComponent(greeting)}`;
+    const waLink = `https://wa.me/${assignedInstance.phone}?text=${encodeURIComponent(greeting)}`;
     res.json({ success: true, waLink });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -834,12 +1054,12 @@ app.post('/api/public/signup', signupLimiter, async (req, res) => {
 /**
  * Admin: list all chats regardless of status (draft/published/archived),
  * each annotated with the live contactStatus (admin already sees
- * contactPhone here, so no serialization concerns).
+ * contactPhone/instanceId here, so no serialization concerns).
  */
 app.get('/api/admin/chats', requireAdmin, (req, res) => {
   const chats = db.getAllChats().map(chat => ({
     ...chat,
-    contactStatus: getContactStatus(chat.contactPhone)
+    contactStatus: getContactStatus(chat.contactPhone, chat.instanceId)
   }));
   res.json(chats);
 });
@@ -917,24 +1137,24 @@ async function startServer() {
   // 1. Initialize Database
   await db.init();
 
-  // 2. Initialize Scheduler
-  await scheduler.init();
+  // 2. Initialize Scheduler (one worker per bot instance + the global
+  // leaderboard sweep loop)
+  await schedulerManager.init();
 
-  const config = getConfig();
-  const PORT = config.port;
+  const PORT = getGlobalConfig().port;
 
   const server = app.listen(PORT, () => {
     console.log(`==================================================`);
     console.log(`🚀 AutoRI-Studio WhatsApp Warmup Agent is running!`);
     console.log(`🌐 Dashboard: http://localhost:${PORT}`);
-    console.log(`📡 Webhook URL: http://your-public-url/webhook`);
+    console.log(`📡 Webhook URL: http://your-public-url/webhook/:instanceId`);
     console.log(`==================================================`);
   });
 
   // Graceful shutdown handling
   const shutdown = () => {
     console.log('Shutting down server and scheduler...');
-    scheduler.destroy();
+    schedulerManager.destroy();
     server.close(() => {
       console.log('Server stopped.');
       process.exit(0);

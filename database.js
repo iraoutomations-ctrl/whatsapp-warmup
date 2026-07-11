@@ -17,9 +17,75 @@ function normalizePhone(phone) {
   return cleanPhone;
 }
 
+// Per-instance ("bot number") field defaults - this is everything that used
+// to live as a single flat value in settings.json before multi-tenant
+// support. Mirrors config.js's old getConfig() defaults exactly, so
+// migrating an existing single-tenant install into its first instance
+// record preserves the live app's current behavior byte-for-byte.
+function defaultInstanceFields() {
+  return {
+    warmupEnabled: false,
+    // Two independent concepts, deliberately not the same flag:
+    // isDefault = routing/identity ("this is the fallback number the public
+    // leaderboard uses when no other instance has spare capacity").
+    // warmupExempt = policy/maturity ("this number has actually graduated
+    // warmup and no longer needs quota/night-rest protection"). A number
+    // can be the default while still mid-warmup (warmupExempt: false) -
+    // the admin flips warmupExempt on later, once it's actually earned it.
+    warmupExempt: false,
+    currentDay: 1,
+    lastDayUpdateAt: null,
+    phone: '',
+    evolutionUrl: '',
+    evolutionToken: '',
+    evolutionInstance: '',
+    webhookSecret: '',
+    nightRestEnabled: true,
+    nightRestStart: '23:00',
+    nightRestEnd: '08:00',
+    activeMinIntervalMinutes: 30,
+    activeMaxIntervalMinutes: 90,
+    week1Limit: 20,
+    week2Limit: 60,
+    groupsEnabled: true,
+    groupReplyLimitPerDay: 2,
+    maxRepliesPerContactPerDay: 4,
+    maxSilentReadsPerDay: 4,
+    busySimulationEnabled: true,
+    busySimulationChance: 0.15,
+    minBusyDelayMinutes: 5,
+    maxBusyDelayMinutes: 30,
+    nextActiveWarmupAt: '',
+    nextActiveWarmupTargetPhone: '',
+    nextActiveWarmupTargetName: '',
+    nightQueue: [],
+    delayedReplies: [],
+    pendingOptOuts: [],
+    lastStatusPostDate: '',
+    lastStatusPostType: '',
+    lastStatusPostCaption: '',
+    lastStatusPostText: '',
+    lastStatusPostFile: ''
+  };
+}
+
+// Fields that stay global (shared by every instance) rather than moving
+// onto per-instance records - the Nehorai persona/voice, admin access, and
+// leaderboard-wide policy aren't tied to any one WhatsApp number.
+const GLOBAL_SETTINGS_DEFAULTS = {
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  adminPin: process.env.ADMIN_PIN || 'Liran!192837',
+  leaderboardRetentionDays: 3,
+  leaderboardMinVotesToKeep: 3,
+  leaderboardTopNAlwaysKept: 10,
+  leaderboardMinMessagesToPublish: 4,
+  leaderboardTopics: ['עבודה', 'לימודים', 'סתם שיחת חולין', 'חברים']
+};
+
 class JSONDatabase {
   constructor() {
     this.settings = {};
+    this.instances = [];
     this.contacts = [];
     this.logs = [];
     this.stats = {};
@@ -46,36 +112,13 @@ class JSONDatabase {
       // Ensure data directory exists
       await fs.mkdir(DATA_DIR, { recursive: true });
 
-      // Initialize Settings
-      this.settings = await this._loadOrInitFile('settings.json', {
-        warmupEnabled: false,
-        currentDay: 1,
-        evolutionUrl: process.env.EVOLUTION_API_URL || '',
-        evolutionToken: process.env.EVOLUTION_API_TOKEN || '',
-        evolutionInstance: process.env.EVOLUTION_API_INSTANCE || '',
-        geminiApiKey: process.env.GEMINI_API_KEY || '',
-        webhookSecret: process.env.WEBHOOK_SECRET || '',
-        nightRestStart: '23:00',
-        nightRestEnd: '08:00',
-        activeMinIntervalMinutes: 30,
-        activeMaxIntervalMinutes: 90,
-        week1Limit: 20,
-        week2Limit: 60,
-        groupsEnabled: true,
-        groupReplyLimitPerDay: 2,
-        maxRepliesPerContactPerDay: 4,
-        maxSilentReadsPerDay: 4,
-        adminPin: process.env.ADMIN_PIN || 'Liran!192837',
-        nextActiveWarmupAt: '',
-        nextActiveWarmupTargetPhone: '',
-        nextActiveWarmupTargetName: '',
-        leaderboardRetentionDays: 3,
-        leaderboardMinVotesToKeep: 3,
-        leaderboardTopNAlwaysKept: 10,
-        leaderboardMinMessagesToPublish: 4,
-        leaderboardTopics: ['עבודה', 'לימודים', 'סתם שיחת חולין', 'חברים'],
-        botWhatsappNumber: ''
-      });
+      // Initialize Settings (global-only fields now - per-number fields live
+      // on instances.json going forward; see defaultInstanceFields() above).
+      // An EXISTING settings.json from a pre-multi-tenant install still
+      // loads with all its old per-number fields intact (this default is
+      // only used when the file doesn't exist yet) - that's relied on by
+      // _loadOrMigrateInstances() below to build the first instance record.
+      this.settings = await this._loadOrInitFile('settings.json', { ...GLOBAL_SETTINGS_DEFAULTS });
 
       // Initialize Contacts
       this.contacts = await this._loadOrInitFile('contacts.json', []);
@@ -89,6 +132,12 @@ class JSONDatabase {
       // Initialize Chats (leaderboard) and Votes
       this.chats = await this._loadOrInitFile('chats.json', []);
       this.votes = await this._loadOrInitFile('votes.json', []);
+
+      // Initialize bot instances (WhatsApp numbers). Special-cased instead
+      // of _loadOrInitFile so "file missing" (never migrated) is never
+      // confused with "empty array" (shouldn't be reachable - exactly one
+      // instance must always exist as default).
+      await this._loadOrMigrateInstances();
 
       this.isInitialized = true;
       console.log('JSON Database successfully initialized.');
@@ -140,15 +189,131 @@ class JSONDatabase {
     return this.writeQueue[filename];
   }
 
-  // Settings operations
+  // First-boot migration: an existing single-tenant install has no
+  // instances.json yet. Synthesize its one (implicit) bot number into a
+  // proper instance record from whatever is currently in settings.json (old
+  // single-tenant field names), mark it default, and tag every existing
+  // contact/chat/log/stats entry with its id - preserves 100% of existing
+  // history under the new multi-tenant shape with zero manual work.
+  async _loadOrMigrateInstances() {
+    const instancesPath = path.join(DATA_DIR, 'instances.json');
+    try {
+      const raw = await fs.readFile(instancesPath, 'utf-8');
+      this.instances = JSON.parse(raw);
+      return;
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error('Error reading instances.json, resetting to defaults:', error);
+        this.instances = [];
+        return;
+      }
+    }
+
+    // ENOENT: never migrated yet.
+    const legacy = this.settings;
+    const now = new Date().toISOString();
+    const defaults = defaultInstanceFields();
+    const defaultInstance = {
+      id: crypto.randomUUID(),
+      label: 'ברירת מחדל',
+      status: 'active',
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now,
+      warmupEnabled: legacy.warmupEnabled ?? defaults.warmupEnabled,
+      // No legacy field for this - it's a brand-new concept, always starts
+      // false on migration. A pre-existing install's number is, by
+      // definition, still actively warming (that's the whole reason it has
+      // day/quota state worth migrating) - an admin promotes it later.
+      warmupExempt: false,
+      currentDay: legacy.currentDay ?? defaults.currentDay,
+      lastDayUpdateAt: legacy.lastDayUpdateAt ?? defaults.lastDayUpdateAt,
+      phone: legacy.botWhatsappNumber || defaults.phone,
+      evolutionUrl: legacy.evolutionUrl || defaults.evolutionUrl,
+      evolutionToken: legacy.evolutionToken || defaults.evolutionToken,
+      evolutionInstance: legacy.evolutionInstance || defaults.evolutionInstance,
+      webhookSecret: legacy.webhookSecret || defaults.webhookSecret,
+      nightRestEnabled: legacy.nightRestEnabled !== false,
+      nightRestStart: legacy.nightRestStart || defaults.nightRestStart,
+      nightRestEnd: legacy.nightRestEnd || defaults.nightRestEnd,
+      activeMinIntervalMinutes: legacy.activeMinIntervalMinutes || defaults.activeMinIntervalMinutes,
+      activeMaxIntervalMinutes: legacy.activeMaxIntervalMinutes || defaults.activeMaxIntervalMinutes,
+      week1Limit: legacy.week1Limit || defaults.week1Limit,
+      week2Limit: legacy.week2Limit || defaults.week2Limit,
+      groupsEnabled: legacy.groupsEnabled !== false,
+      groupReplyLimitPerDay: legacy.groupReplyLimitPerDay || defaults.groupReplyLimitPerDay,
+      maxRepliesPerContactPerDay: legacy.maxRepliesPerContactPerDay !== undefined ? Number(legacy.maxRepliesPerContactPerDay) : defaults.maxRepliesPerContactPerDay,
+      maxSilentReadsPerDay: legacy.maxSilentReadsPerDay !== undefined ? Number(legacy.maxSilentReadsPerDay) : defaults.maxSilentReadsPerDay,
+      busySimulationEnabled: legacy.busySimulationEnabled !== false,
+      busySimulationChance: legacy.busySimulationChance !== undefined ? Number(legacy.busySimulationChance) : defaults.busySimulationChance,
+      minBusyDelayMinutes: legacy.minBusyDelayMinutes !== undefined ? Number(legacy.minBusyDelayMinutes) : defaults.minBusyDelayMinutes,
+      maxBusyDelayMinutes: legacy.maxBusyDelayMinutes !== undefined ? Number(legacy.maxBusyDelayMinutes) : defaults.maxBusyDelayMinutes,
+      nextActiveWarmupAt: legacy.nextActiveWarmupAt || defaults.nextActiveWarmupAt,
+      nextActiveWarmupTargetPhone: legacy.nextActiveWarmupTargetPhone || defaults.nextActiveWarmupTargetPhone,
+      nextActiveWarmupTargetName: legacy.nextActiveWarmupTargetName || defaults.nextActiveWarmupTargetName,
+      nightQueue: Array.isArray(legacy.nightQueue) ? legacy.nightQueue : defaults.nightQueue,
+      delayedReplies: Array.isArray(legacy.delayedReplies) ? legacy.delayedReplies : defaults.delayedReplies,
+      pendingOptOuts: Array.isArray(legacy.pendingOptOuts) ? legacy.pendingOptOuts : defaults.pendingOptOuts,
+      lastStatusPostDate: legacy.lastStatusPostDate || defaults.lastStatusPostDate,
+      lastStatusPostType: legacy.lastStatusPostType || defaults.lastStatusPostType,
+      lastStatusPostCaption: legacy.lastStatusPostCaption || defaults.lastStatusPostCaption,
+      lastStatusPostText: legacy.lastStatusPostText || defaults.lastStatusPostText,
+      lastStatusPostFile: legacy.lastStatusPostFile || defaults.lastStatusPostFile
+    };
+
+    this.instances = [defaultInstance];
+    await this._saveFile('instances.json', this.instances);
+    await this._backfillInstanceId(defaultInstance.id);
+
+    console.log(`Migrated existing installation into default bot instance "${defaultInstance.label}" (${defaultInstance.id}).`);
+    await this.addLog('info', `Migrated existing installation into default bot instance (${defaultInstance.id}).`, '', '', false, defaultInstance.id);
+  }
+
+  // Tags every pre-existing contact/chat/log entry with the newly
+  // synthesized default instance's id, and folds settings.json's old
+  // date-keyed stats object under that instance. Runs exactly once, only
+  // from the ENOENT branch of _loadOrMigrateInstances above.
+  async _backfillInstanceId(defaultInstanceId) {
+    let contactsChanged = false;
+    for (const contact of this.contacts) {
+      if (!contact.instanceId) { contact.instanceId = defaultInstanceId; contactsChanged = true; }
+    }
+    if (contactsChanged) await this._saveFile('contacts.json', this.contacts);
+
+    let chatsChanged = false;
+    for (const chat of this.chats) {
+      if (chat.instanceId) continue;
+      const owner = this.contacts.find(c => c.phone === chat.contactPhone);
+      chat.instanceId = owner?.instanceId || defaultInstanceId;
+      chatsChanged = true;
+    }
+    if (chatsChanged) await this._saveFile('chats.json', this.chats);
+
+    let logsChanged = false;
+    for (const log of this.logs) {
+      if (log.instanceId) continue;
+      const owner = log.phone ? this.contacts.find(c => c.phone === log.phone) : null;
+      log.instanceId = owner?.instanceId || null;
+      logsChanged = true;
+    }
+    if (logsChanged) await this._saveFile('logs.json', this.logs);
+
+    // stats.json is deliberately NOT restructured here. this.stats stays in
+    // its old flat date-keyed shape through Phase 1 because
+    // getStatsForDate()/incrementStat() below are still what scheduler.js
+    // and server.js call on every quota check - nesting it under
+    // defaultInstanceId now would make those still-live calls silently read
+    // as "today's count is 0", i.e. blow past the real daily quota. The
+    // restructuring + the switch to getStatsForInstanceDate/
+    // incrementInstanceStat happen together in Phase 2.
+  }
+
+  // Settings operations (global-only fields - see GLOBAL_SETTINGS_DEFAULTS)
   getSettings() {
     return { ...this.settings };
   }
 
   async saveSettings(newSettings) {
-    if (typeof newSettings.evolutionUrl === 'string') newSettings.evolutionUrl = newSettings.evolutionUrl.trim();
-    if (typeof newSettings.evolutionToken === 'string') newSettings.evolutionToken = newSettings.evolutionToken.trim();
-    if (typeof newSettings.evolutionInstance === 'string') newSettings.evolutionInstance = newSettings.evolutionInstance.trim();
     if (typeof newSettings.geminiApiKey === 'string') newSettings.geminiApiKey = newSettings.geminiApiKey.trim();
 
     this.settings = { ...this.settings, ...newSettings };
@@ -156,11 +321,101 @@ class JSONDatabase {
     return this.settings;
   }
 
+  // ---- Instance (bot number) operations ----
+
+  getInstances() {
+    return [...this.instances];
+  }
+
+  getInstanceById(id) {
+    return this.instances.find(i => i.id === id) || null;
+  }
+
+  getDefaultInstance() {
+    return this.instances.find(i => i.isDefault) || null;
+  }
+
+  async addInstance(fields) {
+    if (!fields.label || !String(fields.label).trim()) {
+      throw new Error('label is required');
+    }
+    const now = new Date().toISOString();
+    // `...fields` is spread before the identity block below, so a
+    // caller-supplied `id`/`isDefault` can never override it - `isDefault`
+    // must go through setDefaultInstance() to keep "exactly one default" an
+    // enforced invariant.
+    const newInstance = {
+      ...defaultInstanceFields(),
+      ...fields,
+      id: crypto.randomUUID(),
+      label: String(fields.label).trim(),
+      status: 'active',
+      isDefault: false,
+      createdAt: now,
+      updatedAt: now
+    };
+    this.instances.push(newInstance);
+    await this._saveFile('instances.json', this.instances);
+    return newInstance;
+  }
+
+  // Allow-listed update - deliberately excludes `id` and `isDefault`.
+  // `isDefault` must go through setDefaultInstance() so "exactly one
+  // default" stays an enforced invariant, not something a generic PUT can
+  // silently violate.
+  async updateInstance(id, updates) {
+    const idx = this.instances.findIndex(i => i.id === id);
+    if (idx === -1) {
+      throw new Error(`Instance not found: ${id}`);
+    }
+    const { id: _ignoredId, isDefault: _ignoredDefault, ...safeUpdates } = updates;
+    this.instances[idx] = { ...this.instances[idx], ...safeUpdates, updatedAt: new Date().toISOString() };
+    await this._saveFile('instances.json', this.instances);
+    return this.instances[idx];
+  }
+
+  async setDefaultInstance(id) {
+    const target = this.instances.find(i => i.id === id);
+    if (!target) {
+      throw new Error(`Instance not found: ${id}`);
+    }
+    const now = new Date().toISOString();
+    for (const inst of this.instances) {
+      inst.isDefault = inst.id === id;
+      inst.updatedAt = now;
+    }
+    await this._saveFile('instances.json', this.instances);
+    return target;
+  }
+
+  async deleteInstance(id) {
+    const target = this.instances.find(i => i.id === id);
+    if (!target) {
+      throw new Error(`Instance not found: ${id}`);
+    }
+    if (target.isDefault) {
+      throw new Error('Cannot delete the default instance - set a different instance as default first.');
+    }
+    const stillOwnsContacts = this.contacts.some(c => c.instanceId === id);
+    if (stillOwnsContacts) {
+      throw new Error('Cannot delete an instance that still owns contacts - reassign or remove them first.');
+    }
+    this.instances = this.instances.filter(i => i.id !== id);
+    await this._saveFile('instances.json', this.instances);
+    return target;
+  }
+
   // Contacts operations
   getContacts() {
     return [...this.contacts];
   }
 
+  // instanceId ties a contact to one bot number for its lifetime (a real
+  // person only has one WhatsApp number, so they only ever end up talking
+  // to whichever single instance they were first assigned to). Falls back
+  // to the current default instance when not explicitly provided, so
+  // callers that don't yet know about multi-tenancy still tag contacts
+  // correctly as long as there's only one instance.
   async addContact(contact) {
     if (!contact.phone) {
       throw new Error('Phone number is required');
@@ -180,6 +435,7 @@ class JSONDatabase {
       name: contact.name || 'Unknown',
       notes: contact.notes || '',
       enabled: contact.enabled !== false,
+      instanceId: contact.instanceId || this.getDefaultInstance()?.id || null,
       addedAt: new Date().toISOString(),
       lastInteractionAt: null,
       messageCount: 0,
@@ -197,7 +453,13 @@ class JSONDatabase {
   // explicit consent to have their chat + chosen display name shown
   // publicly. The chosen topic is stored as the contact's context notes,
   // reusing the same field generateStarter() already reads.
-  async registerLeaderboardSignup({ phone, displayAlias, topic }) {
+  //
+  // A RETURNING visitor (phone already known) always keeps their original
+  // instanceId, no matter what's passed in - they must route back to the
+  // number they already have history with, never get reassigned by a fresh
+  // load-balancing decision. Only a brand-new phone uses the passed-in
+  // instanceId (falling back to the default instance if omitted).
+  async registerLeaderboardSignup({ phone, displayAlias, topic, instanceId }) {
     const cleanPhone = normalizePhone(phone);
     if (!cleanPhone) {
       throw new Error('Invalid phone number format');
@@ -222,6 +484,7 @@ class JSONDatabase {
       name: displayAlias,
       notes: topic || '',
       enabled: true,
+      instanceId: instanceId || this.getDefaultInstance()?.id || null,
       addedAt: new Date().toISOString(),
       lastInteractionAt: null,
       messageCount: 0,
@@ -260,7 +523,7 @@ class JSONDatabase {
     return this.logs.slice(-limit).reverse();
   }
 
-  async addLog(type, details, message = '', phone = '', isOutgoing = false) {
+  async addLog(type, details, message = '', phone = '', isOutgoing = false, instanceId = null) {
     const logEntry = {
       id: Math.random().toString(36).substring(2, 9),
       timestamp: new Date().toISOString(),
@@ -268,7 +531,8 @@ class JSONDatabase {
       details,
       message,
       phone,
-      isOutgoing
+      isOutgoing,
+      instanceId // admin visibility only - never resolved/required for correctness, since a phone already maps 1:1 to its owning instance
     };
 
     this.logs.push(logEntry);
@@ -306,6 +570,7 @@ class JSONDatabase {
       chat = {
         id: crypto.randomUUID(),
         contactPhone: phone,
+        instanceId: contact.instanceId || this.getDefaultInstance()?.id || null, // internal only - never added to toPublicChat's allow-list
         displayAlias: contact.leaderboardDisplayAlias || contact.name || 'משתתף',
         messages: [],
         consentStatus: 'approved',
@@ -360,6 +625,37 @@ class JSONDatabase {
     return { ...this.stats };
   }
 
+  // ---- Per-instance stats (multi-tenant) ----
+  // Not yet wired to any caller, and this.stats is not yet restructured to
+  // this shape either - scheduler.js/server.js/evolution.js still read/write
+  // the flat date-keyed this.stats via getStatsForDate/incrementStat above.
+  // These methods (and the actual stats.json restructuring + migration of
+  // existing data into this shape) land together in Phase 2, so the old
+  // methods are never silently reading a "reset to 0" quota mid-migration.
+
+  getStatsForInstanceDate(instanceId, dateStr) {
+    return this.stats[instanceId]?.[dateStr] || { incoming: 0, outgoing: 0, group: 0, total: 0 };
+  }
+
+  async incrementInstanceStat(instanceId, type) { // 'incoming', 'outgoing', 'group'
+    const today = this.getTodayDateString();
+
+    if (!this.stats[instanceId]) this.stats[instanceId] = {};
+    if (!this.stats[instanceId][today]) {
+      this.stats[instanceId][today] = { incoming: 0, outgoing: 0, group: 0, total: 0 };
+    }
+
+    this.stats[instanceId][today][type]++;
+    this.stats[instanceId][today].total = this.stats[instanceId][today].incoming + this.stats[instanceId][today].outgoing;
+
+    await this._saveFile('stats.json', this.stats);
+    return this.stats[instanceId][today];
+  }
+
+  getStatsSummaryForInstance(instanceId) {
+    return { ...(this.stats[instanceId] || {}) };
+  }
+
   // ---- Leaderboard chats operations ----
 
   // Public-facing serializer: explicit allow-list so contactPhone / internal
@@ -384,12 +680,15 @@ class JSONDatabase {
   }
 
   // Published, non-archived chats for the public leaderboard. getStatusFn,
-  // if provided, is called with each chat's contactPhone and its return
-  // value attached as contactStatus on the public-safe serialized chat.
+  // if provided, is called with each chat's contactPhone and instanceId (the
+  // instanceId is used only to resolve the correct per-instance gating
+  // config for the status computation - it's never part of what
+  // toPublicChat returns to the client) and its return value attached as
+  // contactStatus on the public-safe serialized chat.
   getPublishedChats(getStatusFn) {
     return this.chats
       .filter(c => c.status === 'published')
-      .map(c => this.toPublicChat(c, getStatusFn ? getStatusFn(c.contactPhone) : undefined));
+      .map(c => this.toPublicChat(c, getStatusFn ? getStatusFn(c.contactPhone, c.instanceId) : undefined));
   }
 
   getChatById(id) {

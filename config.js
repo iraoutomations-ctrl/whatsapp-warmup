@@ -3,60 +3,88 @@ import db from './database.js';
 
 dotenv.config();
 
-export function getConfig() {
+// Global, instance-agnostic config: the Nehorai persona/voice, admin
+// access, and leaderboard-wide policy aren't tied to any one WhatsApp
+// number. Use this instead of getConfig() for things that don't vary
+// per-instance (gemini.js, requireAdmin, leaderboard topic/retention logic).
+export function getGlobalConfig() {
   const dbSettings = db.getSettings();
-  
   return {
     port: process.env.PORT || 3000,
-    warmupEnabled: dbSettings.warmupEnabled,
-    currentDay: dbSettings.currentDay,
-    
-    // API configs (from DB with Env fallbacks)
-    evolutionUrl: dbSettings.evolutionUrl || process.env.EVOLUTION_API_URL || '',
-    evolutionToken: dbSettings.evolutionToken || process.env.EVOLUTION_API_TOKEN || '',
-    evolutionInstance: dbSettings.evolutionInstance || process.env.EVOLUTION_API_INSTANCE || '',
     geminiApiKey: dbSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
-    webhookSecret: dbSettings.webhookSecret || process.env.WEBHOOK_SECRET || '',
-
-    // Limits & Rules
-    nightRestStart: dbSettings.nightRestStart || '23:00',
-    nightRestEnd: dbSettings.nightRestEnd || '08:00',
-    activeMinIntervalMinutes: dbSettings.activeMinIntervalMinutes || 30,
-    activeMaxIntervalMinutes: dbSettings.activeMaxIntervalMinutes || 90,
-    week1Limit: dbSettings.week1Limit || 20,
-    week2Limit: dbSettings.week2Limit || 60,
-    groupsEnabled: dbSettings.groupsEnabled !== false,
-    groupReplyLimitPerDay: dbSettings.groupReplyLimitPerDay || 2,
-    maxRepliesPerContactPerDay: dbSettings.maxRepliesPerContactPerDay !== undefined ? Number(dbSettings.maxRepliesPerContactPerDay) : 4,
-    maxSilentReadsPerDay: dbSettings.maxSilentReadsPerDay !== undefined ? Number(dbSettings.maxSilentReadsPerDay) : 4,
     adminPin: dbSettings.adminPin || process.env.ADMIN_PIN || 'Liran!192837',
-    lastStatusPostDate: dbSettings.lastStatusPostDate || '',
-    lastStatusPostType: dbSettings.lastStatusPostType || '',
-    lastStatusPostCaption: dbSettings.lastStatusPostCaption || '',
-    lastStatusPostText: dbSettings.lastStatusPostText || '',
-    lastStatusPostFile: dbSettings.lastStatusPostFile || '',
-    
-    // Night rest and busy simulation settings
-    nightRestEnabled: dbSettings.nightRestEnabled !== false,
-    busySimulationEnabled: dbSettings.busySimulationEnabled !== false,
-    busySimulationChance: dbSettings.busySimulationChance !== undefined ? Number(dbSettings.busySimulationChance) : 0.15,
-    minBusyDelayMinutes: dbSettings.minBusyDelayMinutes !== undefined ? Number(dbSettings.minBusyDelayMinutes) : 5,
-    maxBusyDelayMinutes: dbSettings.maxBusyDelayMinutes !== undefined ? Number(dbSettings.maxBusyDelayMinutes) : 30,
-    
-    // Scheduled warmup info
-    nextActiveWarmupAt: dbSettings.nextActiveWarmupAt || '',
-    nextActiveWarmupTargetPhone: dbSettings.nextActiveWarmupTargetPhone || '',
-    nextActiveWarmupTargetName: dbSettings.nextActiveWarmupTargetName || '',
-
-    // Public leaderboard retention rules
     leaderboardRetentionDays: dbSettings.leaderboardRetentionDays !== undefined ? Number(dbSettings.leaderboardRetentionDays) : 3,
     leaderboardMinVotesToKeep: dbSettings.leaderboardMinVotesToKeep !== undefined ? Number(dbSettings.leaderboardMinVotesToKeep) : 3,
     leaderboardTopNAlwaysKept: dbSettings.leaderboardTopNAlwaysKept !== undefined ? Number(dbSettings.leaderboardTopNAlwaysKept) : 10,
-
-    // Public leaderboard signup + auto-publish
     leaderboardMinMessagesToPublish: dbSettings.leaderboardMinMessagesToPublish !== undefined ? Number(dbSettings.leaderboardMinMessagesToPublish) : 4,
-    leaderboardTopics: Array.isArray(dbSettings.leaderboardTopics) ? dbSettings.leaderboardTopics : ['עבודה', 'לימודים', 'סתם שיחת חולין', 'חברים'],
-    botWhatsappNumber: dbSettings.botWhatsappNumber || ''
+    leaderboardTopics: Array.isArray(dbSettings.leaderboardTopics) ? dbSettings.leaderboardTopics : ['עבודה', 'לימודים', 'סתם שיחת חולין', 'חברים']
+  };
+}
+
+// Per-instance ("bot number") config. Deliberately throws on a
+// missing/invalid instanceId rather than silently falling back to the
+// default instance - a silent fallback would make any call site a refactor
+// missed *look* fine (it would just always act on the default number) while
+// quietly breaking multi-tenancy for every other instance. A loud throw
+// surfaces the mistake immediately during testing instead of in production.
+export function getConfig(instanceId) {
+  if (!instanceId) {
+    throw new Error('getConfig(instanceId) requires an instanceId - use getGlobalConfig() for instance-agnostic settings.');
+  }
+  const instance = db.getInstanceById(instanceId);
+  if (!instance) {
+    throw new Error(`getConfig: unknown instanceId "${instanceId}"`);
+  }
+
+  return {
+    id: instance.id,
+    label: instance.label,
+    phone: instance.phone || '',
+    isDefault: !!instance.isDefault,
+    // warmupExempt bypasses quota/night-rest/contact-cap gating below -
+    // deliberately independent from isDefault (see database.js's
+    // defaultInstanceFields comment): a number can be the routing default
+    // while still mid-warmup and needing full protection.
+    warmupExempt: !!instance.warmupExempt,
+    warmupEnabled: instance.warmupEnabled,
+    currentDay: instance.currentDay,
+    lastDayUpdateAt: instance.lastDayUpdateAt,
+
+    evolutionUrl: instance.evolutionUrl || '',
+    evolutionToken: instance.evolutionToken || '',
+    evolutionInstance: instance.evolutionInstance || '',
+    webhookSecret: instance.webhookSecret || '',
+
+    nightRestEnabled: instance.nightRestEnabled !== false,
+    nightRestStart: instance.nightRestStart || '23:00',
+    nightRestEnd: instance.nightRestEnd || '08:00',
+    activeMinIntervalMinutes: instance.activeMinIntervalMinutes || 30,
+    activeMaxIntervalMinutes: instance.activeMaxIntervalMinutes || 90,
+    week1Limit: instance.week1Limit || 20,
+    week2Limit: instance.week2Limit || 60,
+    groupsEnabled: instance.groupsEnabled !== false,
+    groupReplyLimitPerDay: instance.groupReplyLimitPerDay || 2,
+    maxRepliesPerContactPerDay: instance.maxRepliesPerContactPerDay !== undefined ? Number(instance.maxRepliesPerContactPerDay) : 4,
+    maxSilentReadsPerDay: instance.maxSilentReadsPerDay !== undefined ? Number(instance.maxSilentReadsPerDay) : 4,
+
+    busySimulationEnabled: instance.busySimulationEnabled !== false,
+    busySimulationChance: instance.busySimulationChance !== undefined ? Number(instance.busySimulationChance) : 0.15,
+    minBusyDelayMinutes: instance.minBusyDelayMinutes !== undefined ? Number(instance.minBusyDelayMinutes) : 5,
+    maxBusyDelayMinutes: instance.maxBusyDelayMinutes !== undefined ? Number(instance.maxBusyDelayMinutes) : 30,
+
+    nextActiveWarmupAt: instance.nextActiveWarmupAt || '',
+    nextActiveWarmupTargetPhone: instance.nextActiveWarmupTargetPhone || '',
+    nextActiveWarmupTargetName: instance.nextActiveWarmupTargetName || '',
+
+    nightQueue: Array.isArray(instance.nightQueue) ? instance.nightQueue : [],
+    delayedReplies: Array.isArray(instance.delayedReplies) ? instance.delayedReplies : [],
+    pendingOptOuts: Array.isArray(instance.pendingOptOuts) ? instance.pendingOptOuts : [],
+
+    lastStatusPostDate: instance.lastStatusPostDate || '',
+    lastStatusPostType: instance.lastStatusPostType || '',
+    lastStatusPostCaption: instance.lastStatusPostCaption || '',
+    lastStatusPostText: instance.lastStatusPostText || '',
+    lastStatusPostFile: instance.lastStatusPostFile || ''
   };
 }
 
@@ -93,8 +121,13 @@ export function getIsraelTime() {
   };
 }
 
-export function isNightTime(targetDate = null) {
-  const config = getConfig();
+// isDefault !== warmupExempt (see getConfig above) - a number still mid-warmup
+// always goes through the real night-rest math below even if it's the
+// default/routing instance.
+export function isNightTime(instanceId, targetDate = null) {
+  const config = getConfig(instanceId);
+  if (config.warmupExempt) return false;
+
   let hour, minute;
   if (targetDate) {
     const formatter = new Intl.DateTimeFormat('en-US', {
@@ -110,14 +143,14 @@ export function isNightTime(targetDate = null) {
     hour = timeParts.hour;
     minute = timeParts.minute;
   }
-  
+
   const startStr = config.nightRestStart || '23:00';
   const endStr = config.nightRestEnd || '08:00';
-  
+
   // Defensive splitting in case value format is invalid/corrupted
   let startHour = 23, startMin = 0;
   let endHour = 8, endMin = 0;
-  
+
   if (startStr.includes(':')) {
     const parts = startStr.split(':').map(Number);
     if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
@@ -125,7 +158,7 @@ export function isNightTime(targetDate = null) {
       startMin = parts[1];
     }
   }
-  
+
   if (endStr.includes(':')) {
     const parts = endStr.split(':').map(Number);
     if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
@@ -133,11 +166,11 @@ export function isNightTime(targetDate = null) {
       endMin = parts[1];
     }
   }
-  
+
   const nowMinutes = hour * 60 + minute;
   const startMinutes = startHour * 60 + startMin;
   const endMinutes = endHour * 60 + endMin;
-  
+
   if (startMinutes > endMinutes) {
     // Overlap midnight (e.g. 23:00 to 08:00)
     return nowMinutes >= startMinutes || nowMinutes < endMinutes;
@@ -153,8 +186,10 @@ export function isWeekend() {
   return weekdayNum === 5 || weekdayNum === 6;
 }
 
-export function getDailyQuota() {
-  const config = getConfig();
+export function getDailyQuota(instanceId) {
+  const config = getConfig(instanceId);
+  if (config.warmupExempt) return Infinity;
+
   const baseLimit = config.currentDay <= 7 ? config.week1Limit : config.week2Limit;
 
   // If weekend, cut daily limits in half
@@ -168,13 +203,19 @@ export function getDailyQuota() {
 // per-phone-per-day hash variance). This used to be copy-pasted inline in
 // server.js and twice in scheduler.js - extracted here so contact-status
 // reporting can never drift from the actual enforcement logic.
-export function computeDynamicContactCap(phone, config) {
+export function computeDynamicContactCap(phone, instanceId) {
+  const config = getConfig(instanceId);
   const todayStr = db.getTodayDateString();
   const todayContactLogs = db.getLogs().filter(log =>
     log.phone === phone &&
     (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
     log.timestamp && log.timestamp.startsWith(todayStr)
   );
+
+  if (config.warmupExempt) {
+    return { count: todayContactLogs.length, cap: Infinity, reached: false };
+  }
+
   const baseCap = config.maxRepliesPerContactPerDay || 4;
   const hashStr = phone + todayStr;
   let hash = 0;
@@ -186,27 +227,25 @@ export function computeDynamicContactCap(phone, config) {
   return { count: todayContactLogs.length, cap: dynamicMaxReplies, reached: todayContactLogs.length >= dynamicMaxReplies };
 }
 
-// Has Nehorai hit his own global daily send quota (not per-contact)?
-export function isDailyQuotaReached() {
-  const stats = db.getStatsForDate(db.getTodayDateString());
-  return stats.outgoing >= getDailyQuota();
+// Has this instance hit its own global daily send quota (not per-contact)?
+export function isDailyQuotaReached(instanceId) {
+  const stats = db.getStatsForInstanceDate(instanceId, db.getTodayDateString());
+  return stats.outgoing >= getDailyQuota(instanceId);
 }
 
 // Live per-contact status for the leaderboard UI (public + admin).
 // Priority: typing (transient, in-memory) > today's per-contact cap reached
 // > global night rest > busy-ghosting delay queue > ready. Returns a plain
 // key - the actual Nehorai-voice wording lives in the front-end.
-export function getContactStatus(phone) {
+export function getContactStatus(phone, instanceId) {
   if (db.isTyping(phone)) return 'typing';
 
-  const config = getConfig();
-  if (computeDynamicContactCap(phone, config).reached) return 'quota_reached';
+  const config = getConfig(instanceId);
+  if (computeDynamicContactCap(phone, instanceId).reached) return 'quota_reached';
 
-  if (config.nightRestEnabled && isNightTime()) return 'sleeping';
+  if (config.nightRestEnabled && isNightTime(instanceId)) return 'sleeping';
 
-  const settings = db.getSettings();
-  const delayedReplies = settings.delayedReplies || [];
-  if (delayedReplies.some(r => r.phone === phone)) return 'delayed';
+  if ((config.delayedReplies || []).some(r => r.phone === phone)) return 'delayed';
 
   return 'ready';
 }

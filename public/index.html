@@ -49,6 +49,14 @@
       ⚠️ נהוראי סגר עסק להיום - המכסה היומית נגמרה, לא יוזם ולא עונה יותר עד מחר.
     </div>
 
+    <!-- Instance selector: metrics/status below reflect whichever bot number is selected here (defaults to the default instance) -->
+    <div class="instance-selector-bar" style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+      <label for="instance-selector" style="font-size:0.85rem; color: var(--text-muted); white-space:nowrap;">📡 מציג נתונים עבור מספר:</label>
+      <select id="instance-selector" style="max-width:320px;">
+        <option value="">טוען מספרים...</option>
+      </select>
+    </div>
+
     <!-- Metrics Grid -->
     <section class="metrics-grid">
       <!-- Warmup Progress -->
@@ -120,6 +128,7 @@
       <button class="tab-btn" data-tab="contacts">👥 אנשי קשר מודרכים</button>
       <button class="tab-btn" data-tab="livechat">💬 צ'אט בזמן אמת</button>
       <button class="tab-btn" data-tab="simulator">🤖 סימולטור שיחות</button>
+      <button class="tab-btn" data-tab="instances">📡 מספרים (Instances)</button>
       <button class="tab-btn" data-tab="settings">⚙️ הגדרות מערכת</button>
       <button class="tab-btn" data-tab="leaderboard">🏆 לידרבורד</button>
       <button class="tab-btn" data-tab="documentation">📖 מדריך ומסמכי מערכת</button>
@@ -309,145 +318,57 @@
         </div>
       </div>
 
+      <!-- Panel: Bot Instances (WhatsApp numbers) -->
+      <div class="tab-content" id="tab-instances">
+        <div class="section-header">
+          <h2>📡 מספרי וואטסאפ (Instances)</h2>
+          <button class="btn btn-primary" id="btn-open-add-instance-modal">+ הוסף מספר</button>
+        </div>
+        <p class="section-desc">
+          כל מספר וואטסאפ הוא "instance" נפרד עם חיבור Evolution API, יום חימום ומכסה משלו - כל המספרים חולקים את אותה דמות ציבורית (נהוראי) ואת אותו מפתח Gemini.
+          המספר המסומן <strong>"ברירת מחדל"</strong> משמש כגיבוי תמיד-זמין ללידרבורד הציבורי, ומקבל מצב "פטור מחימום" רק אם תסמן זאת ידנית עבורו (לא אוטומטי - מספר שעדיין בחימום צריך את ההגנות שלו גם אם הוא ברירת המחדל).
+        </p>
+
+        <div class="table-container">
+          <table class="contacts-table">
+            <thead>
+              <tr>
+                <th>תווית</th>
+                <th>מספר</th>
+                <th>ברירת מחדל</th>
+                <th>יום חימום</th>
+                <th>מכסה היום</th>
+                <th>חימום פעיל</th>
+                <th>פטור מחימום</th>
+                <th>פעולות</th>
+              </tr>
+            </thead>
+            <tbody id="instances-table-body">
+              <tr><td colspan="8" class="text-center">טוען מספרים...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Panel: Settings -->
       <div class="tab-content" id="tab-settings">
-        <h2>⚙️ הגדרות המערכת ושריון האמינות</h2>
-        <p class="section-desc">ניהול הגדרות ה-Evolution API, מפתח Gemini וחוקי זמני המנוחה של המערכת.</p>
+        <h2>⚙️ הגדרות גלובליות</h2>
+        <p class="section-desc">הגדרות אלו משותפות לכל מספרי הוואטסאפ (הדמות של נהוראי ומדיניות הלידרבורד). חיבורי Evolution API, ימי חימום, מכסות וחוקי מנוחה הם כעת לפי מספר - ראה לשונית "מספרים (Instances)".</p>
 
         <form id="settings-form" class="settings-grid-form">
-          <!-- Col 1: API Configs -->
+          <!-- Col 1: Gemini (shared persona/voice across every instance) -->
           <div class="settings-box">
-            <h3>🔑 מפתחות וחיבורי API</h3>
-            
+            <h3>🔑 מפתח Gemini (משותף לכל המספרים)</h3>
+
             <div class="form-group">
               <label for="setting-gemini-key">מפתח Gemini API (מ-Google AI Studio):</label>
               <input type="password" id="setting-gemini-key" placeholder="AIzaSy...">
             </div>
-
-            <div class="form-group">
-              <label for="setting-evo-url">Evolution API URL:</label>
-              <input type="url" id="setting-evo-url" placeholder="https://api.yourdomain.com">
-            </div>
-
-            <div class="form-group">
-              <label for="setting-evo-token">Evolution API Apikey (Token):</label>
-              <input type="password" id="setting-evo-token" placeholder="your-global-token">
-            </div>
-
-            <div class="form-group">
-              <label for="setting-evo-instance">Evolution Instance Name:</label>
-              <input type="text" id="setting-evo-instance" placeholder="yozma-whatsapp">
-            </div>
-
-            <div class="form-group">
-              <label for="setting-webhook-secret">Webhook Secret (הגנה על /webhook מפני הודעות מזויפות):</label>
-              <input type="password" id="setting-webhook-secret" placeholder="בחר מחרוזת סודית אקראית">
-              <small class="text-muted">אחרי שמירה, עדכן ב-Evolution API את כתובת ה-webhook ל: <code>/webhook/&lt;הסוד שבחרת&gt;</code></small>
-            </div>
-
-            <button class="btn btn-outline" id="btn-test-connection" type="button" style="margin-top: 15px; width: 100%;">🔍 בדיקת התממשקות וחיבור API</button>
-            <div id="connection-test-results"></div>
           </div>
 
-          <!-- Col 2: Warmup & Rest Rules -->
+          <!-- Col 2: Public Leaderboard policy -->
           <div class="settings-box">
-            <h3>⏱️ חוקי מנוחה וקצב חימום</h3>
-
-            <div class="form-group-row">
-              <div class="form-group">
-                <label for="setting-current-day">יום חימום נוכחי (1-14):</label>
-                <input type="number" id="setting-current-day" min="1" max="14" required>
-              </div>
-              <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
-                <label class="toggle-switch">
-                  <input type="checkbox" id="setting-warmup-enabled">
-                  <span class="slider"></span>
-                  <span class="toggle-label">מערכת חימום פעילה</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="form-group-row">
-              <div class="form-group">
-                <label for="setting-rest-start">שעת תחילת מנוחה (לילה):</label>
-                <input type="time" id="setting-rest-start" required>
-              </div>
-              <div class="form-group">
-                <label for="setting-rest-end">שעת סיום מנוחה (בוקר):</label>
-                <input type="time" id="setting-rest-end" required>
-              </div>
-            </div>
-
-            <div class="form-group-row" style="margin-top: 10px; margin-bottom: 10px; gap: 15px;">
-              <div class="form-group" style="display: flex; align-items: center;">
-                <label class="toggle-switch">
-                  <input type="checkbox" id="setting-night-rest-enabled">
-                  <span class="slider"></span>
-                  <span class="toggle-label">מצב מנוחה בלילה פעיל</span>
-                </label>
-              </div>
-              <div class="form-group" style="display: flex; align-items: center;">
-                <label class="toggle-switch">
-                  <input type="checkbox" id="setting-busy-simulation-enabled">
-                  <span class="slider"></span>
-                  <span class="toggle-label">מנגנון עסוק רנדומלי (סינון)</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="form-group-row">
-              <div class="form-group">
-                <label for="setting-interval-min">זמן מינימום בין פניות (דקות):</label>
-                <input type="number" id="setting-interval-min" min="5" required>
-              </div>
-              <div class="form-group">
-                <label for="setting-interval-max">זמן מקסימום בין פניות (דקות):</label>
-                <input type="number" id="setting-interval-max" min="5" required>
-              </div>
-            </div>
-
-            <div class="form-group-row">
-              <div class="form-group">
-                <label for="setting-limit-w1">מגבלת שבוע 1 (הודעות/יום):</label>
-                <input type="number" id="setting-limit-w1" min="1" required>
-              </div>
-              <div class="form-group">
-                <label for="setting-limit-w2">מגבלת שבוע 2 (הודעות/יום):</label>
-                <input type="number" id="setting-limit-w2" min="1" required>
-              </div>
-            </div>
-
-            <div class="form-group-row">
-              <div class="form-group">
-                <label for="setting-max-replies">עומק שיחה גג לאדם (ביום):</label>
-                <input type="number" id="setting-max-replies" min="2" max="15" required>
-              </div>
-              <div class="form-group">
-                <label for="setting-max-silent">גג קריאות שקטות (V כחול):</label>
-                <input type="number" id="setting-max-silent" min="0" max="10" required>
-              </div>
-            </div>
-
-            <div class="form-group-checkbox">
-              <input type="checkbox" id="setting-groups-enabled">
-              <label for="setting-groups-enabled">הפעל תגובות בקבוצות (שבוע 2)</label>
-            </div>
-            
-            <div class="form-group">
-              <label for="setting-group-limit">מגבלת תגובות בקבוצות ליום:</label>
-              <input type="number" id="setting-group-limit" min="0" required>
-            </div>
-          </div>
-
-          <!-- Col 3: Public Leaderboard -->
-          <div class="settings-box">
-            <h3>🏆 לידרבורד ציבורי (נהוראי)</h3>
-
-            <div class="form-group">
-              <label for="setting-bot-whatsapp-number">מספר הוואטסאפ של הבוט (בפורמט בינלאומי, למשל 9725XXXXXXXX):</label>
-              <input type="text" id="setting-bot-whatsapp-number" placeholder="972501234567">
-              <small class="text-muted">המספר שאליו מפנה קישור ה-wa.me בעמוד ההרשמה הציבורי.</small>
-            </div>
+            <h3>🏆 מדיניות לידרבורד ציבורי (נהוראי)</h3>
 
             <div class="form-group">
               <label for="setting-leaderboard-topics">נושאי שיחה בטופס ההרשמה (מופרדים בפסיקים):</label>
@@ -617,13 +538,13 @@
 
             <div class="doc-card" style="border-top: 3px solid #f59e0b;">
               <div class="doc-icon">⚙️</div>
-              <h3>4. הגדרות מערכת מתקדמות (Settings)</h3>
-              <p>שליטה מלאה בכל הפרמטרים של המערכת ומנועי החימום:</p>
+              <h3>4. הגדרות גלובליות (Settings)</h3>
+              <p>לשונית "הגדרות מערכת" מכילה כיום רק את מה שבאמת משותף לכל מספרי הוואטסאפ:</p>
               <ul style="padding-right: 18px; margin-top: 8px; line-height: 1.6; font-size: 0.9rem;">
-                <li><strong>הגדרת שעות מנוחה (Night Sleep):</strong> קביעת טווח השעות שבהן המערכת נכנסת לתרדמת לילה ולא יוזמת/עונה להודעות.</li>
-                <li><strong>שליטה במכסות:</strong> הגדרת תקרת הודעות יומית לשבוע הראשון ולשבוע השני בהתאם לקצב שאתה רוצה.</li>
-                <li><strong>הגדרות קבוצות:</strong> הפעלה או כיבוי של מענה בקבוצות והגבלת כמות התגובות היומית בקבוצה.</li>
+                <li><strong>מפתח Gemini API:</strong> משותף לכל המספרים - כולם מדברים באותה דמות (נהוראי) ואותו קול.</li>
+                <li><strong>מדיניות לידרבורד:</strong> נושאי שיחה בטופס ההרשמה, וסף ההודעות המינימלי לפני פרסום אוטומטי.</li>
               </ul>
+              <p style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary);">שעות מנוחה, מכסות יומיות, יום חימום, חיבור Evolution API והגדרות קבוצות עברו להיות <strong>לפי מספר</strong> - ראו את הכרטיסים על לשונית "מספרים (Instances)" בהמשך.</p>
             </div>
 
             <div class="doc-card" style="border-top: 3px solid #ec4899;">
@@ -644,6 +565,60 @@
                 <li><strong>תיעוד מפורט:</strong> צפייה בלוגים חיים של סימולציות קריאה, השהיות, תגובות אימוג'י וקריאות ל-Gemini.</li>
                 <li><strong>סינון וניקוי:</strong> סינון מהיר של הודעות מערכת, שגיאות או הצלחות, ואפשרות לניקוי יומן מהיר.</li>
               </ul>
+            </div>
+
+          </div>
+
+          <!-- Section 2.5: Multi-Instance (multiple WhatsApp numbers) -->
+          <div class="doc-header" style="margin-top: 40px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 30px;">
+            <h2>📡 חימום כמה מספרי וואטסאפ במקביל (Multi-Instance)</h2>
+            <p>נהוראי יכול לרוץ מאחורי כמה מספרי וואטסאפ שונים בו-זמנית - כל מספר הוא "instance" נפרד עם החיבור, היום והמכסה שלו, וכולם חולקים את אותה דמות ציבורית אחת.</p>
+          </div>
+
+          <div class="doc-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+
+            <div class="doc-card" style="border-top: 3px solid var(--cyan);">
+              <div class="doc-icon">🧩</div>
+              <h3>1. מה זה "instance" ולמה בכלל כמה מספרים?</h3>
+              <p>כל מספר וואטסאפ שרוצים לחמם דורש חיבור Evolution API נפרד (בדרך כלל על שרת/IP נפרד משלו, כדי שמטא לא תזהה כמה מספרים כבאים מאותו מקום). לכן במקום להריץ עותק שלם של המערכת לכל לקוח, נהוראי מנהל <strong>רשימת instances</strong> - כל אחד מחזיק את חיבור ה-Evolution, יום החימום (1-14), המכסה היומית וחוקי המנוחה של המספר שלו, בעוד שהדמות (Gemini), הלידרבורד הציבורי וה-PIN של הניהול נשארים משותפים ואחידים לכולם.</p>
+            </div>
+
+            <div class="doc-card" style="border-top: 3px solid var(--primary);">
+              <div class="doc-icon">🏠</div>
+              <h3>2. "ברירת מחדל" מול "פטור מחימום" - שני דברים שונים!</h3>
+              <p>זו הנקודה הכי חשובה להבין נכון:</p>
+              <ul style="padding-right: 18px; margin-top: 8px; line-height: 1.6; font-size: 0.9rem;">
+                <li><strong>ברירת מחדל (isDefault):</strong> רק תפקיד ניתוב. זה המספר שהלידרבורד הציבורי מפנה אליו נרשמים חדשים כשאף מספר לקוח אחר לא פנוי כרגע (בלילה, במכסה, או כי אין עדיין מספרי לקוחות בכלל). יש תמיד בדיוק מספר ברירת מחדל אחד.</li>
+                <li><strong>פטור מחימום (warmupExempt):</strong> דגל נפרד לגמרי, שמכבה עבור המספר את מכסת ההודעות היומית ואת מנוחת הלילה. מיועד רק למספר שבאמת <strong>סיים</strong> את תהליך החימום בפועל (הגיע ליום 14 ומעלה זמן משמעותי).</li>
+              </ul>
+              <p style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary);">מספר יכול להיות ברירת מחדל <strong>בזמן שהוא עדיין מתחמם</strong> (פטור = כבוי) - זה בדיוק המצב של המספר הראשי היום. סמנו "פטור" ידנית בלשונית Instances רק כשאתם בטוחים שהמספר באמת בוגר.</p>
+            </div>
+
+            <div class="doc-card" style="border-top: 3px solid #10b981;">
+              <div class="doc-icon">⚖️</div>
+              <h3>3. איך נרשם חדש בלידרבורד "מוקצה" למספר?</h3>
+              <p>כשמישהו חדש נרשם דרך העמוד הציבורי, המערכת בוחרת אוטומטית את מספר הלקוח (לא ברירת המחדל) עם <strong>הכי הרבה מכסה פנויה היום</strong> מבין אלו שבאמת זמינים (חימום פעיל, לא במנוחת לילה, לא הגיעו למכסה). אם אף מספר לקוח לא זמין כרגע, ההרשמה נופלת חזרה למספר ברירת המחדל - כדי שנהוראי לעולם לא "ייעלם" מבחינת הציבור.</p>
+              <p style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary);">אדם שכבר נרשם פעם תמיד חוזר <strong>לאותו מספר בדיוק</strong> שהוקצה לו בהתחלה, גם אם הניתוב היה משבץ אותו למספר אחר היום - השיחה וההיסטוריה שלו נשארות במקום אחד קבוע.</p>
+            </div>
+
+            <div class="doc-card" style="border-top: 3px solid #f59e0b;">
+              <div class="doc-icon">🌐</div>
+              <h3>4. הלידרבורד הציבורי נשאר אחד, תמיד</h3>
+              <p>גם עם 5 מספרים פעילים במקביל, הציבור רואה <strong>עמוד לידרבורד אחד בלבד</strong> עם דמות אחת (נהוראי) - אין שום דרך לדעת מבחוץ איזה מספר טיפל באיזו שיחה. זה לא רק עניין עיצובי: המנוע פשוט לא שולח שום מזהה מספר/instance לשום נתיב ציבורי (chats, config, הרשמה) - הבידוד הזה נבדק ואומת בפועל.</p>
+            </div>
+
+            <div class="doc-card" style="border-top: 3px solid #ec4899; grid-column: 1 / -1;">
+              <div class="doc-icon">➕</div>
+              <h3>5. מדריך צעד-אחר-צעד: איך מוסיפים מספר חדש</h3>
+              <ol style="padding-right: 18px; margin-top: 8px; line-height: 1.7; font-size: 0.9rem;">
+                <li><strong>הכינו תשתית נפרדת קודם:</strong> instance חדש ב-Evolution API, רצוי על שרת/IP נפרד מכל מספר אחר (כדי שמטא לא תקשר בין המספרים).</li>
+                <li>בדשבורד, עברו ללשונית <strong>"📡 מספרים (Instances)"</strong> ולחצו <strong>"+ הוסף מספר"</strong>.</li>
+                <li>מלאו תווית (שם פנימי לזיהוי, למשל שם הלקוח), מספר הוואטסאפ, וכתובת/Token/שם ה-instance של ה-Evolution API שהקמתם עבורו.</li>
+                <li>שמרו - המספר החדש מקבל אוטומטית יום חימום 1, מכסות ברירת מחדל, ומתחיל לרוץ מיד (יש לו scheduler עצמאי משלו, בלי לגעת באף מספר אחר).</li>
+                <li>פתחו שוב לעריכה (✏️) את המספר שזה עתה נוסף - עכשיו תראו שדה <strong>"כתובת ה-Webhook"</strong> מוכן. העתיקו אותו והדביקו אותו כ-Webhook URL בהגדרות ה-Evolution API של המספר הזה (לא של אף מספר אחר!).</li>
+                <li>לחצו "🔍 בדיקה" בטבלת המספרים כדי לוודא שהחיבור באמת תקין לפני שסומכים על המספר.</li>
+                <li>המספר החדש כבר מוכן לקבל הרשמות מהלידרבורד הציבורי אוטומטית (לפי כלל האיזון בכרטיס 3 למעלה) - אין צורך בשום פעולה נוספת.</li>
+              </ol>
             </div>
 
           </div>
@@ -744,6 +719,12 @@
           <label for="contact-notes">הערות / הקשר שיחה:</label>
           <input type="text" id="contact-notes" placeholder="למשל: יזרום איתי על נושא העבודה ומיילים">
         </div>
+        <div class="form-group">
+          <label for="contact-instance-select">מספר וואטסאפ (Instance) שיטפל באיש הקשר:</label>
+          <select id="contact-instance-select">
+            <option value="">-- ברירת המחדל --</option>
+          </select>
+        </div>
         <div class="form-group-checkbox">
           <input type="checkbox" id="contact-enabled" checked>
           <label for="contact-enabled">איש קשר פעיל לחימום</label>
@@ -756,6 +737,158 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.3.0"></script>
+  <!-- Modal: Add/Edit Bot Instance (WhatsApp number) -->
+  <div class="modal" id="instance-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="instance-modal-title">📡 הוספת מספר וואטסאפ חדש</h3>
+        <span class="modal-close" id="btn-close-instance-modal">&times;</span>
+      </div>
+      <form id="instance-form">
+        <input type="hidden" id="instance-id">
+
+        <div class="form-group">
+          <label for="instance-label">תווית (שם פנימי לזיהוי, למשל שם הלקוח):</label>
+          <input type="text" id="instance-label" placeholder="למשל: לקוח - ישראל תוכנה בע״מ" required>
+        </div>
+
+        <div class="form-group">
+          <label for="instance-phone">מספר הוואטסאפ (בפורמט בינלאומי):</label>
+          <input type="text" id="instance-phone" placeholder="972501234567">
+        </div>
+
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="instance-evo-url">Evolution API URL (של המספר הזה בלבד):</label>
+            <input type="url" id="instance-evo-url" placeholder="https://evo-instance2.example.com">
+          </div>
+          <div class="form-group">
+            <label for="instance-evo-instance">Evolution Instance Name:</label>
+            <input type="text" id="instance-evo-instance" placeholder="client2-whatsapp">
+          </div>
+        </div>
+
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="instance-evo-token">Evolution API Apikey (Token):</label>
+            <input type="password" id="instance-evo-token" placeholder="token">
+          </div>
+          <div class="form-group">
+            <label for="instance-webhook-secret">Webhook Secret:</label>
+            <input type="password" id="instance-webhook-secret" placeholder="בחר מחרוזת סודית">
+          </div>
+        </div>
+
+        <div class="form-group" id="instance-webhook-url-box" style="display:none;">
+          <label>כתובת ה-Webhook להזנה ב-Evolution API:</label>
+          <input type="text" id="instance-webhook-url-display" readonly onclick="this.select()">
+          <small class="text-muted">הדביקו כתובת זו כ-Webhook URL בהגדרות ה-Evolution API של המספר הזה.</small>
+        </div>
+
+        <div class="form-group-row" style="margin-top: 10px; gap: 15px;">
+          <div class="form-group" style="display: flex; align-items: center;">
+            <label class="toggle-switch">
+              <input type="checkbox" id="instance-warmup-enabled">
+              <span class="slider"></span>
+              <span class="toggle-label">חימום פעיל</span>
+            </label>
+          </div>
+          <div class="form-group" style="display: flex; align-items: center;">
+            <label class="toggle-switch">
+              <input type="checkbox" id="instance-warmup-exempt">
+              <span class="slider"></span>
+              <span class="toggle-label">פטור ממכסה/מנוחת לילה</span>
+            </label>
+          </div>
+        </div>
+        <small class="text-muted" style="display:block; margin-bottom: 10px;">"פטור" מיועד למספר בוגר שכבר סיים חימום לגמרי - מספר שעדיין מתחמם (גם אם הוא ברירת המחדל) צריך את ההגנות דלוקות.</small>
+
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="instance-current-day">יום חימום נוכחי (1-14):</label>
+            <input type="number" id="instance-current-day" min="1" max="14" required>
+          </div>
+        </div>
+
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="instance-rest-start">שעת תחילת מנוחה (לילה):</label>
+            <input type="time" id="instance-rest-start" required>
+          </div>
+          <div class="form-group">
+            <label for="instance-rest-end">שעת סיום מנוחה (בוקר):</label>
+            <input type="time" id="instance-rest-end" required>
+          </div>
+        </div>
+
+        <div class="form-group-row" style="gap: 15px;">
+          <div class="form-group" style="display: flex; align-items: center;">
+            <label class="toggle-switch">
+              <input type="checkbox" id="instance-night-rest-enabled">
+              <span class="slider"></span>
+              <span class="toggle-label">מצב מנוחה בלילה פעיל</span>
+            </label>
+          </div>
+          <div class="form-group" style="display: flex; align-items: center;">
+            <label class="toggle-switch">
+              <input type="checkbox" id="instance-busy-simulation-enabled">
+              <span class="slider"></span>
+              <span class="toggle-label">מנגנון עסוק רנדומלי</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="instance-interval-min">זמן מינימום בין פניות (דקות):</label>
+            <input type="number" id="instance-interval-min" min="5" required>
+          </div>
+          <div class="form-group">
+            <label for="instance-interval-max">זמן מקסימום בין פניות (דקות):</label>
+            <input type="number" id="instance-interval-max" min="5" required>
+          </div>
+        </div>
+
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="instance-limit-w1">מגבלת שבוע 1 (הודעות/יום):</label>
+            <input type="number" id="instance-limit-w1" min="1" required>
+          </div>
+          <div class="form-group">
+            <label for="instance-limit-w2">מגבלת שבוע 2 (הודעות/יום):</label>
+            <input type="number" id="instance-limit-w2" min="1" required>
+          </div>
+        </div>
+
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="instance-max-replies">עומק שיחה גג לאדם (ביום):</label>
+            <input type="number" id="instance-max-replies" min="2" max="15" required>
+          </div>
+          <div class="form-group">
+            <label for="instance-max-silent">גג קריאות שקטות (V כחול):</label>
+            <input type="number" id="instance-max-silent" min="0" max="10" required>
+          </div>
+        </div>
+
+        <div class="form-group-checkbox">
+          <input type="checkbox" id="instance-groups-enabled">
+          <label for="instance-groups-enabled">הפעל תגובות בקבוצות (שבוע 2)</label>
+        </div>
+
+        <div class="form-group">
+          <label for="instance-group-limit">מגבלת תגובות בקבוצות ליום:</label>
+          <input type="number" id="instance-group-limit" min="0" required>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-cancel-instance-modal">ביטול</button>
+          <button type="submit" class="btn btn-primary">שמור מספר</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js?v=1.4.0"></script>
 </body>
 </html>

@@ -1,11 +1,11 @@
-import { getConfig } from './config.js';
+import { getGlobalConfig } from './config.js';
 import db from './database.js';
 
 /**
  * Sends a request to the Gemini API to generate content.
  */
 export async function callGemini(systemPrompt, userPrompt, temperature = 0.8) {
-  const config = getConfig();
+  const config = getGlobalConfig();
   const apiKey = config.geminiApiKey;
 
   if (!apiKey) {
