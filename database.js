@@ -298,14 +298,19 @@ class JSONDatabase {
     }
     if (logsChanged) await this._saveFile('logs.json', this.logs);
 
-    // stats.json is deliberately NOT restructured here. this.stats stays in
-    // its old flat date-keyed shape through Phase 1 because
-    // getStatsForDate()/incrementStat() below are still what scheduler.js
-    // and server.js call on every quota check - nesting it under
-    // defaultInstanceId now would make those still-live calls silently read
-    // as "today's count is 0", i.e. blow past the real daily quota. The
-    // restructuring + the switch to getStatsForInstanceDate/
-    // incrementInstanceStat happen together in Phase 2.
+    // Fold the old flat date-keyed stats.json ({ "2026-07-11": {...} })
+    // under the default instance's id, matching the new per-instance shape
+    // ({ [instanceId]: { "2026-07-11": {...} } }) that
+    // getStatsForInstanceDate/incrementInstanceStat now read and write.
+    // This method only ever runs once, from the ENOENT branch of
+    // _loadOrMigrateInstances (i.e. the very first boot after this
+    // multi-tenant change), so this.stats is guaranteed to still be in the
+    // old flat shape here - skipping this step would make every existing
+    // day's real outgoing count invisible to the new quota checks (they'd
+    // silently read as 0), letting the bot blow past its real daily quota
+    // the moment it resumes sending today.
+    this.stats = { [defaultInstanceId]: this.stats };
+    await this._saveFile('stats.json', this.stats);
   }
 
   // Settings operations (global-only fields - see GLOBAL_SETTINGS_DEFAULTS)
