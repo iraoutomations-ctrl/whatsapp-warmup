@@ -174,10 +174,16 @@ app.post(['/webhook/:instanceId/:secret', '/api/webhook/:instanceId/:secret', '/
     await db.incrementInstanceStat(instance.id, 'incoming');
     await db.addLog('message', `Received: ${messageText}`, messageText, phone, false, instance.id);
 
-    // Update contact status
+    // Update contact status. lastIncomingMessageAt/consecutiveIgnoredStarters
+    // reset here on ANY incoming message (even one that ends up SILENT_READ
+    // due to quota/depth caps below) - the point is "did they engage with
+    // us", not "did we manage to reply back", so this must happen before
+    // any of the gating checks further down.
     await db.updateContact(phone, {
       lastInteractionAt: new Date().toISOString(),
-      messageCount: contact.messageCount + 1
+      messageCount: contact.messageCount + 1,
+      lastIncomingMessageAt: new Date().toISOString(),
+      consecutiveIgnoredStarters: 0
     });
 
     // Self-serve opt-out ("תפסיק לכתוב לי" -> confirm "כן תפסיק"). Checked

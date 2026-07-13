@@ -66,6 +66,7 @@ export function getConfig(instanceId) {
     groupReplyLimitPerDay: instance.groupReplyLimitPerDay || 2,
     maxRepliesPerContactPerDay: instance.maxRepliesPerContactPerDay !== undefined ? Number(instance.maxRepliesPerContactPerDay) : 4,
     maxSilentReadsPerDay: instance.maxSilentReadsPerDay !== undefined ? Number(instance.maxSilentReadsPerDay) : 4,
+    maxConsecutiveIgnoredStarters: instance.maxConsecutiveIgnoredStarters !== undefined ? Number(instance.maxConsecutiveIgnoredStarters) : 3,
 
     busySimulationEnabled: instance.busySimulationEnabled !== false,
     busySimulationChance: instance.busySimulationChance !== undefined ? Number(instance.busySimulationChance) : 0.15,

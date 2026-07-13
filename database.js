@@ -51,6 +51,10 @@ function defaultInstanceFields() {
     groupReplyLimitPerDay: 2,
     maxRepliesPerContactPerDay: 4,
     maxSilentReadsPerDay: 4,
+    // Consecutive active starters sent to a contact with zero reply before
+    // stopping proactive outreach to them (they can still write in on their
+    // own any time - this only pulls them out of the active-starter pool).
+    maxConsecutiveIgnoredStarters: 3,
     busySimulationEnabled: true,
     busySimulationChance: 0.15,
     minBusyDelayMinutes: 5,
@@ -244,6 +248,7 @@ class JSONDatabase {
       groupReplyLimitPerDay: legacy.groupReplyLimitPerDay || defaults.groupReplyLimitPerDay,
       maxRepliesPerContactPerDay: legacy.maxRepliesPerContactPerDay !== undefined ? Number(legacy.maxRepliesPerContactPerDay) : defaults.maxRepliesPerContactPerDay,
       maxSilentReadsPerDay: legacy.maxSilentReadsPerDay !== undefined ? Number(legacy.maxSilentReadsPerDay) : defaults.maxSilentReadsPerDay,
+      maxConsecutiveIgnoredStarters: legacy.maxConsecutiveIgnoredStarters !== undefined ? Number(legacy.maxConsecutiveIgnoredStarters) : defaults.maxConsecutiveIgnoredStarters,
       busySimulationEnabled: legacy.busySimulationEnabled !== false,
       busySimulationChance: legacy.busySimulationChance !== undefined ? Number(legacy.busySimulationChance) : defaults.busySimulationChance,
       minBusyDelayMinutes: legacy.minBusyDelayMinutes !== undefined ? Number(legacy.minBusyDelayMinutes) : defaults.minBusyDelayMinutes,
@@ -446,7 +451,15 @@ class JSONDatabase {
       messageCount: 0,
       leaderboardConsent: false,
       leaderboardDisplayAlias: '',
-      leaderboardConsentAt: null
+      leaderboardConsentAt: null,
+      // Consecutive-ignored-starters tracking (see scheduler.js
+      // runActiveWarmupCycle) - lastIncomingMessageAt is deliberately
+      // separate from lastInteractionAt, which also gets bumped on
+      // outgoing sends and so can't tell "they replied" from "we messaged
+      // them".
+      consecutiveIgnoredStarters: 0,
+      lastStarterSentAt: null,
+      lastIncomingMessageAt: null
     };
 
     this.contacts.push(newContact);
@@ -493,6 +506,9 @@ class JSONDatabase {
       addedAt: new Date().toISOString(),
       lastInteractionAt: null,
       messageCount: 0,
+      consecutiveIgnoredStarters: 0,
+      lastStarterSentAt: null,
+      lastIncomingMessageAt: null,
       ...consentFields
     };
     this.contacts.push(newContact);

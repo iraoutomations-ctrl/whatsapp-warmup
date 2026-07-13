@@ -8,6 +8,24 @@ import { sendMessage, sendStatusText, sendStatusImage, sendStatus, markRead, sen
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Once a contact crosses the ignore threshold, they get one more chance
+// after this much time has passed since we last tried them - a real person
+// eventually gives someone another shot rather than writing them off
+// forever, and it stops the whole active-starter pool from going
+// permanently silent if several contacts happen to go quiet at once.
+const IGNORE_COOLDOWN_MS = 48 * 60 * 60 * 1000;
+
+// Shared eligibility check used by both the dashboard preview (scheduleNextWarmup)
+// and the actual send selection (runActiveWarmupCycle), so they never disagree
+// about who's currently excluded.
+function isEligibleForActiveStarter(contact, maxConsecutiveIgnoredStarters) {
+  const ignoredCount = contact.consecutiveIgnoredStarters || 0;
+  if (ignoredCount < maxConsecutiveIgnoredStarters) return true;
+  if (!contact.lastStarterSentAt) return true;
+  const elapsedMs = Date.now() - new Date(contact.lastStarterSentAt).getTime();
+  return elapsedMs >= IGNORE_COOLDOWN_MS;
+}
+
 // One WarmupScheduler worker runs per bot instance (WhatsApp number) - each
 // has its own independent day/quota/night-rest/queue state, since that
 // state exists specifically to protect that one number's reputation.
@@ -109,8 +127,11 @@ class WarmupScheduler {
 
     console.log(`[${this.instanceId}] Next active warmup starter scheduled for: ${nextRunTime.toLocaleTimeString()}`);
 
-    // Pre-calculate target contact for dashboard display
-    const contacts = db.getContacts().filter(c => c.instanceId === this.instanceId && c.enabled);
+    // Pre-calculate target contact for dashboard display. Excludes contacts
+    // who've ignored too many consecutive active starters, matching the
+    // same pool runActiveWarmupCycle actually sends from - otherwise this
+    // widget could preview someone that cycle will just skip.
+    const contacts = db.getContacts().filter(c => c.instanceId === this.instanceId && c.enabled && isEligibleForActiveStarter(c, config.maxConsecutiveIgnoredStarters));
     let nextTarget = null;
     if (contacts.length > 0) {
       const sortedContacts = [...contacts].sort((a, b) => {
@@ -177,14 +198,26 @@ class WarmupScheduler {
       return false;
     }
 
-    // Pick a contact (prefer the pre-scheduled target contact if not excluded)
-    const contacts = db.getContacts().filter(c => c.instanceId === this.instanceId && c.enabled && !excludePhones.includes(c.phone));
+    // Pick a contact (prefer the pre-scheduled target contact if not excluded).
+    // Excludes anyone who's ignored maxConsecutiveIgnoredStarters active
+    // starters in a row with zero reply - a real person stops chasing
+    // someone who's gone quiet on them, and it protects the number from a
+    // block/report, which is worse than an unused message slot. They're
+    // never blocked from writing in on their own; this only stops US from
+    // proactively targeting them - and even that isn't forever, see
+    // isEligibleForActiveStarter's cooldown.
+    const contacts = db.getContacts().filter(c =>
+      c.instanceId === this.instanceId &&
+      c.enabled &&
+      !excludePhones.includes(c.phone) &&
+      isEligibleForActiveStarter(c, config.maxConsecutiveIgnoredStarters)
+    );
     if (contacts.length === 0) {
       console.log(`[${this.instanceId}] Active warmup cycle aborted: No available candidate contacts left.`);
       if (excludePhones.length > 0) {
         await db.addLog('warning', 'Active warmup cycle aborted: All candidate contacts failed sending.', '', '', false, this.instanceId);
       } else {
-        await db.addLog('warning', 'Active warmup skipped: No enabled contacts found.', '', '', false, this.instanceId);
+        await db.addLog('warning', 'Active warmup skipped: No enabled contacts found (or all remaining contacts have gone quiet).', '', '', false, this.instanceId);
       }
       return false;
     }
@@ -218,6 +251,19 @@ class WarmupScheduler {
 
       const sent = await sendMessage(config, targetContact.phone, message);
       if (sent) {
+        // Judge the PREVIOUS starter's outcome (using targetContact's
+        // pre-send values) before overwriting lastStarterSentAt with this
+        // one - if there was a previous starter and no incoming message
+        // arrived since it, they ignored it. Any reply at all (even one
+        // that hit a depth/quota gate and got a silent read) already reset
+        // this to 0 in the webhook handler, so this only ever climbs on
+        // genuine silence.
+        const previousStarterIgnored = !!targetContact.lastStarterSentAt &&
+          (!targetContact.lastIncomingMessageAt || new Date(targetContact.lastIncomingMessageAt) < new Date(targetContact.lastStarterSentAt));
+        await db.updateContact(targetContact.phone, {
+          lastStarterSentAt: new Date().toISOString(),
+          consecutiveIgnoredStarters: previousStarterIgnored ? (targetContact.consecutiveIgnoredStarters || 0) + 1 : 0
+        });
         await db.addLog('success', `Active starter successfully sent to ${targetContact.name}`, '', '', false, this.instanceId);
         return true;
       } else {
