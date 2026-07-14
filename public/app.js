@@ -1449,12 +1449,26 @@ function renderActiveChat() {
   }
 
   let html = '';
+  let lastDateStr = null;
   conversationMessages.forEach(msg => {
     const isOutgoing = msg.isOutgoing === true;
     const bubbleClass = isOutgoing ? 'outgoing' : 'incoming';
-    const timeStr = msg.ts
-      ? new Date(msg.ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+    const msgDate = msg.ts ? new Date(msg.ts) : null;
+    const timeStr = msgDate
+      ? msgDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
       : '';
+
+    // Insert a date divider whenever the calendar day changes, so a
+    // conversation spanning multiple days (now that full history is
+    // visible - see the chats.json-backed history fix) doesn't show
+    // ambiguous repeating times with no sense of which day they're from.
+    if (msgDate) {
+      const dateStr = msgDate.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+      if (dateStr !== lastDateStr) {
+        html += `<div class="date-divider">${escapeHtml(dateStr)}</div>`;
+        lastDateStr = dateStr;
+      }
+    }
 
     // Handle bubble splitting representation in the chat view
     const messageParts = (msg.text || '').split('||');
