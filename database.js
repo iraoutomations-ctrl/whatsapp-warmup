@@ -582,9 +582,15 @@ class JSONDatabase {
   // Appends a live chat message to the consenting contact's leaderboard
   // entry and auto-publishes once it crosses the minimum message threshold.
   // No content filtering of any kind - text is stored exactly as sent.
+  // Records every contact's message history unconditionally - this is now
+  // the source of truth for admin chat visibility (renderActiveChat) and
+  // per-contact daily cap counting (computeDynamicContactCap), neither of
+  // which should depend on leaderboard consent. Only the auto-publish step
+  // below is gated on contact.leaderboardConsent - that's the one line that
+  // actually protects the public leaderboard's privacy guarantee.
   async _autoAppendLeaderboardMessage(phone, text, isOutgoing) {
     const contact = this.contacts.find(c => c.phone === phone);
-    if (!contact || !contact.leaderboardConsent) return;
+    if (!contact) return;
 
     let chat = this.getChatByPhone(phone);
     if (!chat) {
@@ -594,7 +600,7 @@ class JSONDatabase {
         instanceId: contact.instanceId || this.getDefaultInstance()?.id || null, // internal only - never added to toPublicChat's allow-list
         displayAlias: contact.leaderboardDisplayAlias || contact.name || 'משתתף',
         messages: [],
-        consentStatus: 'approved',
+        consentStatus: contact.leaderboardConsent ? 'approved' : 'pending',
         status: 'draft',
         createdAt: new Date().toISOString(),
         publishedAt: null,
@@ -606,7 +612,7 @@ class JSONDatabase {
     chat.messages.push({ text, isOutgoing, ts: new Date().toISOString() });
 
     const threshold = this.settings.leaderboardMinMessagesToPublish || 4;
-    if (chat.status === 'draft' && chat.messages.length >= threshold) {
+    if (contact.leaderboardConsent && chat.status === 'draft' && chat.messages.length >= threshold) {
       chat.status = 'published';
       chat.publishedAt = new Date().toISOString();
     }

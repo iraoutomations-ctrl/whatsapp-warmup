@@ -50,6 +50,7 @@ let systemStatus = {};
 let adminSecrets = { geminiApiKey: '' };
 let simulatorHistory = [];
 let activeChatPhone = null;
+let activeChatMessages = []; // full history for activeChatPhone, from chats.json (not the capped/rotating logsList)
 let instancesList = [];
 let selectedInstanceId = ''; // '' = let the server resolve the default instance
 
@@ -311,7 +312,8 @@ async function loadData() {
     fetchStatus(),
     fetchContacts(),
     fetchLogs(),
-    fetchLeaderboardChats()
+    fetchLeaderboardChats(),
+    fetchActiveChatMessages()
   ]);
   updateLiveChatUI();
   updateAdminUI();
@@ -325,6 +327,7 @@ async function pollRealtimeData() {
     await fetchContacts();
     await fetchLogs();
     await fetchLeaderboardChats();
+    await fetchActiveChatMessages();
     updateLiveChatUI();
     updateAdminUI();
   } catch (err) {
@@ -373,6 +376,23 @@ async function fetchLogs() {
     logsList = [];
   }
   updateLogsUI();
+}
+
+// Full history for the currently-open Live Chat conversation, sourced from
+// the contact's persistent chats.json record (see /api/admin/chats/by-phone)
+// rather than logsList, which is capped at 200 fetched / 1000 stored
+// globally across every contact and log type.
+async function fetchActiveChatMessages() {
+  if (!activeChatPhone) {
+    activeChatMessages = [];
+    return;
+  }
+  try {
+    const res = await fetchAPI(`/api/admin/chats/by-phone/${encodeURIComponent(activeChatPhone)}`, { silentAuth: true });
+    activeChatMessages = res.messages || [];
+  } catch (e) {
+    activeChatMessages = [];
+  }
 }
 
 async function fetchLeaderboardChats() {
@@ -1352,7 +1372,7 @@ function updateLiveChatUI() {
     // Add click listeners to chat items
     const chatItems = sidebarContainer.querySelectorAll('.chat-item');
     chatItems.forEach(item => {
-      item.addEventListener('click', () => {
+      item.addEventListener('click', async () => {
         activeChatPhone = item.getAttribute('data-phone');
         // Highlight active
         chatItems.forEach(i => i.classList.remove('active'));
@@ -1361,6 +1381,7 @@ function updateLiveChatUI() {
         if (messagesContainer) {
           messagesContainer.setAttribute('data-just-opened', 'true');
         }
+        await fetchActiveChatMessages();
         renderActiveChat();
       });
     });
@@ -1416,28 +1437,27 @@ function renderActiveChat() {
     statusBadge.textContent = 'חופשי 🟢';
   }
 
-  // Filter and sort conversation logs (oldest first for chronological order)
-  const conversationLogs = logsList
-    .filter(log => log.phone === activeChatPhone && log.type === 'message')
-    .slice() // copy to avoid mutating original
-    .reverse(); // reverse oldest-first
+  // activeChatMessages comes from the contact's persistent chats.json
+  // record (already chronological, oldest-first) - not logsList, which is
+  // capped at 200 fetched / 1000 stored globally across every contact.
+  const conversationMessages = activeChatMessages;
 
   const messagesContainer = document.getElementById('livechat-messages-container');
-  if (conversationLogs.length === 0) {
+  if (conversationMessages.length === 0) {
     messagesContainer.innerHTML = '<div class="system-bubble">אין הודעות קודמות. שלח הודעה כדי להתחיל שיחה!</div>';
     return;
   }
 
   let html = '';
-  conversationLogs.forEach(log => {
-    const isOutgoing = log.isOutgoing === true;
+  conversationMessages.forEach(msg => {
+    const isOutgoing = msg.isOutgoing === true;
     const bubbleClass = isOutgoing ? 'outgoing' : 'incoming';
-    const timeStr = log.timestamp 
-      ? new Date(log.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+    const timeStr = msg.ts
+      ? new Date(msg.ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
       : '';
 
     // Handle bubble splitting representation in the chat view
-    const messageParts = (log.message || '').split('||');
+    const messageParts = (msg.text || '').split('||');
     
     messageParts.forEach((part, index) => {
       const cleanPart = part.trim();
@@ -1496,11 +1516,12 @@ async function handleLiveChatSend(e) {
       }
 
       showNotification('ההודעה נשלחה בהצלחה!', 'success');
-      
+
       // Fetch latest real data instantly from server (avoids duplicates)
       await fetchLogs();
       await fetchContacts();
       await fetchStatus();
+      await fetchActiveChatMessages();
       updateLiveChatUI();
     }
   } catch (err) {

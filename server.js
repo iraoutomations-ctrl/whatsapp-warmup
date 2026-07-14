@@ -1061,13 +1061,39 @@ app.post('/api/public/signup', signupLimiter, async (req, res) => {
  * Admin: list all chats regardless of status (draft/published/archived),
  * each annotated with the live contactStatus (admin already sees
  * contactPhone/instanceId here, so no serialization concerns).
+ *
+ * Chats are now recorded for every contact unconditionally (see
+ * _autoAppendLeaderboardMessage), not just leaderboard-consenting ones, so
+ * this list excludes chats belonging to a real contact who never consented
+ * - they were never publishable anyway, and would otherwise clutter this
+ * "candidates to publish" view with private conversations. Manually-curated
+ * chats with no matching contact (via POST /api/admin/chats) still show.
  */
 app.get('/api/admin/chats', requireAdmin, (req, res) => {
-  const chats = db.getAllChats().map(chat => ({
-    ...chat,
-    contactStatus: getContactStatus(chat.contactPhone, chat.instanceId)
-  }));
+  const chats = db.getAllChats()
+    .filter(chat => {
+      const contact = db.getContacts().find(c => c.phone === chat.contactPhone);
+      return !contact || contact.leaderboardConsent;
+    })
+    .map(chat => ({
+      ...chat,
+      contactStatus: getContactStatus(chat.contactPhone, chat.instanceId)
+    }));
   res.json(chats);
+});
+
+/**
+ * Admin: full message history for one contact, sourced from their
+ * persistent chats.json record - not the rotating global logs.json, which
+ * is capped at 1000 entries shared across every contact/instance and only
+ * fetches the most recent 200 into the dashboard. Powers the Live Chat
+ * panel so history survives regardless of log rotation or leaderboard
+ * consent (both are recorded here unconditionally - see
+ * _autoAppendLeaderboardMessage in database.js).
+ */
+app.get('/api/admin/chats/by-phone/:phone', requireAdmin, (req, res) => {
+  const chat = db.getChatByPhone(req.params.phone);
+  res.json({ messages: chat ? chat.messages : [] });
 });
 
 /**

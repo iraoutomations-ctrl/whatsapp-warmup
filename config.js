@@ -207,14 +207,19 @@ export function getDailyQuota(instanceId) {
 export function computeDynamicContactCap(phone, instanceId) {
   const config = getConfig(instanceId);
   const todayStr = db.getTodayDateString();
-  const todayContactLogs = db.getLogs().filter(log =>
-    log.phone === phone &&
-    (log.type === 'message' || log.type === 'sent' || log.type === 'success') &&
-    log.timestamp && log.timestamp.startsWith(todayStr)
+  // Sourced from the contact's own persistent chats.json record, not the
+  // rotating global logs.json - that log is capped at 1000 entries shared
+  // across every contact/instance, so as more numbers/clients are added a
+  // busy day elsewhere could push a contact's own entries out of the
+  // window and make this cap silently under-count. chats.json has no such
+  // shared cap.
+  const chat = db.getChatByPhone(phone);
+  const todayContactMessages = (chat?.messages || []).filter(m =>
+    m.ts && m.ts.startsWith(todayStr)
   );
 
   if (config.warmupExempt) {
-    return { count: todayContactLogs.length, cap: Infinity, reached: false };
+    return { count: todayContactMessages.length, cap: Infinity, reached: false };
   }
 
   const baseCap = config.maxRepliesPerContactPerDay || 4;
@@ -225,7 +230,7 @@ export function computeDynamicContactCap(phone, instanceId) {
   }
   const variance = (Math.abs(hash) % 3) - 1; // -1, 0, or +1
   const dynamicMaxReplies = Math.max(2, baseCap + variance);
-  return { count: todayContactLogs.length, cap: dynamicMaxReplies, reached: todayContactLogs.length >= dynamicMaxReplies };
+  return { count: todayContactMessages.length, cap: dynamicMaxReplies, reached: todayContactMessages.length >= dynamicMaxReplies };
 }
 
 // Has this instance hit its own global daily send quota (not per-contact)?
