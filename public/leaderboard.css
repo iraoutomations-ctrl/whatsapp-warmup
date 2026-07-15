@@ -58,20 +58,20 @@ button { font-family: inherit; cursor: pointer; }
 }
 body.shake { animation: screenShake 0.5s ease-in-out; }
 
-/* ---------- Cinematic Intro Splash Screen ---------- */
+/* ---------- Cinematic Intro Splash Screen (True Fullscreen Cinema) ---------- */
 .intro-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: radial-gradient(circle at center, #1a1a14 0%, #0a0a0a 80%);
+  background: #000;
   z-index: 99999;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 .intro-overlay.fade-out {
@@ -81,81 +81,82 @@ body.shake { animation: screenShake 0.5s ease-in-out; }
 }
 
 .intro-video-box {
-  position: relative;
-  width: 92%;
-  max-width: 520px;
-  border-radius: 24px;
-  overflow: hidden;
-  border: 2px solid var(--neon);
-  box-shadow: 0 0 50px rgba(255, 234, 0, 0.35), 0 0 120px rgba(0, 0, 0, 0.95);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   background: #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
 }
 
 .intro-video-box video {
   width: 100%;
-  max-height: 72vh;
+  height: 100%;
   display: block;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .intro-controls {
   position: absolute;
-  top: 14px;
-  left: 14px;
-  right: 14px;
+  top: 24px;
+  left: 24px;
+  right: 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  z-index: 10;
+  z-index: 20;
   pointer-events: none;
 }
 
 .intro-controls button {
   pointer-events: auto;
-  background: rgba(10, 10, 10, 0.82);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--neon-soft);
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--neon);
   color: var(--text-main);
-  padding: 8px 16px;
-  border-radius: 30px;
-  font-size: 0.92rem;
+  padding: 10px 22px;
+  border-radius: 40px;
+  font-size: 1rem;
   font-weight: 700;
   transition: all 0.25s ease;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
 }
 
 .intro-controls button:hover {
   background: var(--neon);
   color: var(--carbon);
   border-color: var(--neon);
-  transform: translateY(-2px);
-  box-shadow: 0 0 20px var(--neon-glow);
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 0 25px var(--neon-glow);
 }
 
 .intro-sound-btn.active {
-  background: rgba(46, 230, 166, 0.22);
+  background: rgba(46, 230, 166, 0.25);
   border-color: var(--green);
   color: #fff;
 }
 
 .intro-caption {
-  margin-top: 22px;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--neon);
-  text-shadow: 0 0 16px var(--neon-glow);
-  letter-spacing: 0.5px;
-  animation: pulseCaption 1.8s infinite ease-in-out;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.5) 60%, transparent 100%);
+  padding: 40px 20px 28px;
   text-align: center;
-  padding: 0 16px;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--neon);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.95), 0 0 22px var(--neon-glow);
+  letter-spacing: 0.6px;
+  animation: pulseCaption 1.8s infinite ease-in-out;
 }
 
 @keyframes pulseCaption {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.72; transform: scale(0.98); }
+  50% { opacity: 0.75; transform: scale(0.98); }
 }
 
 @keyframes floatLogo {
