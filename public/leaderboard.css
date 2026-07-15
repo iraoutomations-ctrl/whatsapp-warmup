@@ -359,9 +359,10 @@ body.reveal-active .container {
   height: 170px;
   border-radius: 50%;
   object-fit: cover;
+  object-position: center 20%;
   border: 4px solid var(--neon);
   box-shadow: 0 0 38px var(--neon-glow), inset 0 0 18px rgba(46, 230, 166, 0.25);
-  margin-bottom: 16px;
+  margin: 0 auto 16px;
   animation: floatLogo 4s ease-in-out infinite;
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
   display: block;
@@ -772,10 +773,17 @@ body.reveal-active .container {
   margin-top: 40px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .hero-logo {
-    width: 145px;
-    height: 145px;
+    width: 155px;
+    height: 155px;
     border-width: 3.5px;
+    object-position: center 18%;
+  }
+  .ambient-bg-slide {
+    background-position: center 25%;
+  }
+  .ambient-bg-slide.active {
+    opacity: 0.78;
   }
 }

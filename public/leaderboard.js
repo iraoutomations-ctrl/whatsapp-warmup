@@ -440,16 +440,6 @@ function setupAmbientSlideshow() {
     slides[currentIdx].classList.remove('active');
     currentIdx = (currentIdx + 1) % slides.length;
     slides[currentIdx].classList.add('active');
-
-    // Also softly cross-fade Nehorai's profile picture circle on the Hero section every interval!
-    if (heroImg) {
-      heroImg.style.transition = 'opacity 0.4s ease';
-      heroImg.style.opacity = '0.15';
-      setTimeout(() => {
-        heroImg.src = slideUrls[currentIdx];
-        heroImg.style.opacity = '1';
-      }, 400);
-    }
   }, 6500);
 }
 
