@@ -197,16 +197,17 @@ body.reveal-active .container {
   width: 100%;
   height: 100%;
   background-size: cover;
-  background-position: center;
+  background-position: var(--face-x, 50%) var(--face-y, 25%);
+  transform-origin: var(--face-x, 50%) var(--face-y, 25%);
   opacity: 0;
   filter: brightness(0.9) contrast(1.08);
-  transform: scale(1.03);
-  transition: opacity 1.8s cubic-bezier(0.16, 1, 0.3, 1), transform 10s linear;
+  transform: scale(1.02);
+  transition: opacity 1.8s cubic-bezier(0.16, 1, 0.3, 1), transform 6.5s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .ambient-bg-slide.active {
   opacity: 0.68;
-  transform: scale(1);
+  transform: scale(1.15);
 }
 
 .ambient-bg-slideshow::after {
@@ -773,10 +774,15 @@ body.reveal-active .container {
   margin-top: 40px;
 }
 
-@keyframes mobileKenBurns {
-  0% { background-position: 5% top; }
-  50% { background-position: 95% top; }
-  100% { background-position: 50% top; }
+@keyframes faceCloseUpKenBurns {
+  0% {
+    background-position: var(--face-x, 50%) var(--face-y, 25%);
+    transform: scale(1.02);
+  }
+  100% {
+    background-position: var(--face-x, 50%) var(--face-y, 25%);
+    transform: scale(1.28);
+  }
 }
 
 @media (max-width: 768px) {
@@ -788,11 +794,13 @@ body.reveal-active .container {
     margin: 0 auto 16px;
   }
   .ambient-bg-slide {
-    background-size: 145% 100%;
-    background-position: center top;
-    animation: mobileKenBurns 18s ease-in-out infinite alternate;
+    background-size: cover;
+    background-position: var(--face-x, 50%) var(--face-y, 25%);
+    transform-origin: var(--face-x, 50%) var(--face-y, 25%);
+    animation: none;
   }
   .ambient-bg-slide.active {
-    opacity: 0.82;
+    opacity: 0.85;
+    animation: faceCloseUpKenBurns 6.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   }
 }
