@@ -17,12 +17,30 @@
     <div class="intro-video-box">
       <video id="intro-video" src="/nehorai/nehori.mp4" playsinline preload="auto"></video>
       <div class="intro-controls">
-        <button class="intro-sound-btn" id="intro-sound-btn" title="הפעל שמע">🔇 לחץ להפעלת שמע</button>
-        <button class="intro-skip-btn" id="intro-skip-btn" title="דלג על הפתיח">⏭️ דלג על הפתיח</button>
+        <button class="intro-sound-btn" id="intro-sound-btn" title="הפעל/כבה שמע">🔊 סאונד פועל במלוא העוצמה</button>
       </div>
     </div>
     <div class="intro-caption">
       <span>🔥 נהוראי מתחמם... תתכוננו לזריקת הכיסא 🪑💥</span>
+    </div>
+
+    <!-- Realistic Glass Shatter / Crack Overlay -->
+    <div class="glass-cracks" id="glass-cracks">
+      <svg class="crack-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+        <g stroke="rgba(255, 255, 255, 0.95)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 10px rgba(255, 234, 0, 0.85))">
+          <path d="M500,500 L120,80 M500,500 L880,110 M500,500 L950,520 M500,500 L820,910 M500,500 L490,980 M500,500 L150,880 M500,500 L50,480 M500,500 L310,180" />
+          <path d="M500,500 L380,320 L210,290 L80,160 M500,500 L620,340 L790,260 L920,310 M500,500 L680,610 L840,680 L960,820 M500,500 L420,680 L290,790 L110,950 M500,500 L280,510 L140,580 L20,660" />
+          <path d="M380,320 L620,340 L680,610 L420,680 L280,510 Z" stroke-width="2" opacity="0.85" />
+          <path d="M210,290 L790,260 L840,680 L290,790 L140,580 Z" stroke-width="1.5" opacity="0.65" />
+          <path d="M440,430 L570,440 L590,560 L450,580 Z" stroke-width="2.5" opacity="0.95" />
+        </g>
+      </svg>
+      <div class="glass-shards">
+        <div class="shard shard-1"></div>
+        <div class="shard shard-2"></div>
+        <div class="shard shard-3"></div>
+        <div class="shard shard-4"></div>
+      </div>
     </div>
   </div>
 

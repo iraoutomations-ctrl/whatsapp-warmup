@@ -297,56 +297,78 @@ function setupLoadMoreButton() {
 function setupCinematicIntro() {
   const overlay = document.getElementById('intro-overlay');
   const video = document.getElementById('intro-video');
-  const skipBtn = document.getElementById('intro-skip-btn');
   const soundBtn = document.getElementById('intro-sound-btn');
+  const glassCracks = document.getElementById('glass-cracks');
   const ctaBtn = document.getElementById('cta-signup-btn');
 
   if (!overlay || !video) return;
 
   let finished = false;
+  let shatterTriggered = false;
+
+  const triggerShatter = () => {
+    if (shatterTriggered) return;
+    shatterTriggered = true;
+
+    // Shake the screen as the chair hits!
+    document.body.classList.add('shake');
+    setTimeout(() => document.body.classList.remove('shake'), 650);
+
+    // Flash the realistic glass crack SVG and flying shards!
+    if (glassCracks) {
+      glassCracks.classList.add('shatter-active');
+    }
+  };
 
   const finishIntro = () => {
     if (finished) return;
     finished = true;
-
-    // Shake the screen as the chair flies!
-    document.body.classList.add('shake');
-    setTimeout(() => document.body.classList.remove('shake'), 650);
+    triggerShatter();
 
     if (ctaBtn) {
       ctaBtn.classList.add('pulse');
       setTimeout(() => ctaBtn.classList.remove('pulse'), 4200);
     }
 
-    // Shatter fade out overlay and reveal leaderboard
-    overlay.classList.add('fade-out');
+    // Fade out intro overlay right as glass shatters
+    setTimeout(() => {
+      overlay.classList.add('fade-out');
+    }, 120);
+
     setTimeout(() => {
       overlay.style.display = 'none';
       video.pause();
-    }, 650);
+    }, 780);
   };
 
   // Chair throw moment trigger near end of video
   video.addEventListener('timeupdate', () => {
     if (!video.duration) return;
     const remaining = video.duration - video.currentTime;
-    if (!finished && remaining < 0.6) {
+    if (!shatterTriggered && remaining < 0.65) {
+      triggerShatter();
+    }
+    if (!finished && remaining < 0.45) {
       finishIntro();
     }
   });
 
   video.addEventListener('ended', finishIntro);
 
-  if (skipBtn) {
-    skipBtn.addEventListener('click', finishIntro);
-  }
+  const enableSound = () => {
+    if (video.muted) {
+      video.muted = false;
+      if (soundBtn) {
+        soundBtn.innerHTML = '🔊 סאונד פועל במלוא העוצמה';
+        soundBtn.classList.add('active');
+      }
+    }
+  };
 
   if (soundBtn) {
     soundBtn.addEventListener('click', () => {
       if (video.muted) {
-        video.muted = false;
-        soundBtn.innerHTML = '🔊 שמע פועל';
-        soundBtn.classList.add('active');
+        enableSound();
       } else {
         video.muted = true;
         soundBtn.innerHTML = '🔇 לחץ להפעלת שמע';
@@ -355,23 +377,29 @@ function setupCinematicIntro() {
     });
   }
 
-  // Unmute if user taps anywhere on overlay before end
-  overlay.addEventListener('click', (e) => {
-    if (e.target !== skipBtn && e.target !== soundBtn && video.muted) {
-      video.muted = false;
-      if (soundBtn) {
-        soundBtn.innerHTML = '🔊 שמע פועל';
-        soundBtn.classList.add('active');
-      }
-    }
-  });
+  // Unmute automatically on ANY interaction (click, touch, keydown, pointerdown) if browser blocked initial unmuted play
+  const unlockSoundEvents = ['click', 'pointerdown', 'touchstart', 'keydown'];
+  const unlockHandler = () => {
+    enableSound();
+    unlockSoundEvents.forEach(evt => window.removeEventListener(evt, unlockHandler, true));
+  };
+  unlockSoundEvents.forEach(evt => window.addEventListener(evt, unlockHandler, true));
 
-  // Attempt autoplay immediately
-  video.play().catch(() => {
+  // Attempt unmuted play first!
+  video.muted = false;
+  video.play().then(() => {
+    if (soundBtn) {
+      soundBtn.innerHTML = '🔊 סאונד פועל במלוא העוצמה';
+      soundBtn.classList.add('active');
+    }
+  }).catch(() => {
+    // If browser blocks unmuted play, fallback to muted immediately and prompt tap
     video.muted = true;
-    video.play().catch(() => {
-      // If blocked entirely, wait for click
-    });
+    if (soundBtn) {
+      soundBtn.innerHTML = '⚡ לחץ/גע במסך להפעלת סאונד';
+      soundBtn.classList.remove('active');
+    }
+    video.play().catch(() => {});
   });
 }
 
