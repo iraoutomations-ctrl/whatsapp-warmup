@@ -69,8 +69,7 @@ body.shake { animation: screenShake 0.5s ease-in-out; }
   z-index: 99999;
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: opacity 1.5s cubic-bezier(0.16, 1, 0.3, 1), transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.85s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
@@ -160,93 +159,23 @@ body.shake { animation: screenShake 0.5s ease-in-out; }
   50% { opacity: 0.75; transform: scale(0.98); }
 }
 
-/* ---------- Realistic 3D Tempered Glass Shatter Engine ---------- */
-.glass-shatter-engine {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 50;
-  pointer-events: none;
-  opacity: 0;
-  transform: scale(0.96);
-  transition: opacity 0.1s ease-in, transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-}
-
-.glass-shatter-engine.shatter-active {
-  opacity: 1;
-  transform: scale(1.05);
-}
-
-.impact-flash {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at 52% 48%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 234, 0, 0.6) 20%, transparent 65%);
+/* ---------- Creative Warp-Zoom Reveal Transition ---------- */
+.intro-overlay.creative-reveal {
   opacity: 0;
   pointer-events: none;
+  transform: scale(1.18);
+  filter: blur(16px) brightness(1.6);
 }
 
-.glass-shatter-engine.shatter-active .impact-flash {
-  animation: impactFlashAnim 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes pageRevealBounce {
+  0% { opacity: 0; transform: scale(0.92) translateY(35px); filter: blur(10px); }
+  60% { opacity: 1; transform: scale(1.02) translateY(-6px); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
 }
 
-@keyframes impactFlashAnim {
-  0% { opacity: 1; transform: scale(0.85); }
-  20% { opacity: 0.9; transform: scale(1.15); }
-  100% { opacity: 0; transform: scale(1.6); }
-}
-
-.crack-svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  opacity: 0;
-}
-
-.glass-shatter-engine.shatter-active .crack-svg {
-  animation: crackStayAndFade 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes crackStayAndFade {
-  0% { opacity: 0; transform: scale(0.98); filter: drop-shadow(0 0 10px #fff); }
-  8% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 35px var(--neon)); }
-  70% { opacity: 1; transform: scale(1.04); filter: drop-shadow(0 0 40px var(--neon)); }
-  100% { opacity: 0; transform: scale(1.12) rotate(1deg); filter: blur(6px); }
-}
-
-.shards-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  perspective: 1200px;
-}
-
-.dynamic-shard {
-  position: absolute;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 234, 0, 0.22) 100%);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 25px rgba(255, 234, 0, 0.5), inset 0 0 20px rgba(255, 255, 255, 0.4);
-  opacity: 0;
-  transform-style: preserve-3d;
-  will-change: transform, opacity;
-}
-
-.glass-shatter-engine.shatter-active .dynamic-shard {
-  animation: shardExplode 2.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes shardExplode {
-  0% { opacity: 1; transform: translate3d(0, 0, 0) rotateX(0) rotateY(0) rotateZ(0) scale(1); }
-  15% { opacity: 1; transform: translate3d(var(--fly-x-mid), var(--fly-y-mid), 120px) rotateX(var(--rot-x-mid)) rotateY(var(--rot-y-mid)) rotateZ(var(--rot-z-mid)) scale(1.08); }
-  100% { opacity: 0; transform: translate3d(var(--fly-x), var(--fly-y), 450px) rotateX(var(--rot-x)) rotateY(var(--rot-y)) rotateZ(var(--rot-z)) scale(1.45); }
+body.reveal-active .hero,
+body.reveal-active .container {
+  animation: pageRevealBounce 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes floatLogo {
