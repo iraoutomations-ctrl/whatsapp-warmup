@@ -774,14 +774,18 @@ body.reveal-active .container {
   margin-top: 40px;
 }
 
-@keyframes faceCloseUpKenBurns {
+@keyframes storyRevealSweep {
   0% {
+    background-position: 5% top;
+    transform: scale(1.04);
+  }
+  45% {
     background-position: var(--face-x, 50%) var(--face-y, 25%);
-    transform: scale(1.02);
+    transform: scale(1.0);
   }
   100% {
-    background-position: var(--face-x, 50%) var(--face-y, 25%);
-    transform: scale(1.28);
+    background-position: 95% top;
+    transform: scale(1.05);
   }
 }
 
@@ -794,13 +798,13 @@ body.reveal-active .container {
     margin: 0 auto 16px;
   }
   .ambient-bg-slide {
-    background-size: cover;
+    background-size: 135% 100%;
     background-position: var(--face-x, 50%) var(--face-y, 25%);
-    transform-origin: var(--face-x, 50%) var(--face-y, 25%);
+    transform-origin: center center;
     animation: none;
   }
   .ambient-bg-slide.active {
     opacity: 0.85;
-    animation: faceCloseUpKenBurns 6.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    animation: storyRevealSweep 6.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   }
 }
