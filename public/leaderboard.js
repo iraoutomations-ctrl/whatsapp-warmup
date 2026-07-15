@@ -331,6 +331,8 @@ function setupCinematicIntro() {
     setTimeout(() => {
       overlay.style.display = 'none';
       video.pause();
+      video.removeAttribute('src');
+      video.load();
     }, 880);
   };
 
@@ -347,6 +349,13 @@ function setupCinematicIntro() {
   });
 
   video.addEventListener('ended', finishIntro);
+  video.addEventListener('error', finishIntro);
+  video.addEventListener('stalled', () => {
+    setTimeout(() => { if (!finished && video.currentTime > 0) finishIntro(); }, 1500);
+  });
+  overlay.addEventListener('click', () => {
+    if (video.currentTime > 1.2 || !video.duration) finishIntro();
+  });
 
   const enableSound = () => {
     if (video.muted) {
@@ -425,6 +434,9 @@ function setupAmbientSlideshow() {
 
   let currentIdx = 0;
   setInterval(() => {
+    const introOverlay = document.getElementById('intro-overlay');
+    if (introOverlay && introOverlay.style.display !== 'none') return;
+
     slides[currentIdx].classList.remove('active');
     currentIdx = (currentIdx + 1) % slides.length;
     slides[currentIdx].classList.add('active');
