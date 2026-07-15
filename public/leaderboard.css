@@ -197,17 +197,17 @@ body.reveal-active .container {
   width: 100%;
   height: 100%;
   background-size: cover;
-  background-position: var(--face-x, 50%) var(--face-y, 25%);
-  transform-origin: var(--face-x, 50%) var(--face-y, 25%);
+  background-position: var(--desktop-pos, 50% 25%);
+  transform-origin: var(--desktop-pos, 50% 25%);
   opacity: 0;
   filter: brightness(0.9) contrast(1.08);
-  transform: scale(1.02);
-  transition: opacity 1.8s cubic-bezier(0.16, 1, 0.3, 1), transform 6.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: scale(1.0);
+  transition: opacity 2.2s cubic-bezier(0.16, 1, 0.3, 1), transform 14s linear;
 }
 
 .ambient-bg-slide.active {
   opacity: 0.68;
-  transform: scale(1.15);
+  transform: scale(1.05);
 }
 
 .ambient-bg-slideshow::after {
@@ -774,18 +774,14 @@ body.reveal-active .container {
   margin-top: 40px;
 }
 
-@keyframes storyRevealSweep {
+@keyframes mobileGentleCloseUp {
   0% {
-    background-position: 5% top;
-    transform: scale(1.04);
-  }
-  45% {
-    background-position: var(--face-x, 50%) var(--face-y, 25%);
+    background-position: var(--mobile-pos, 50% 25%);
     transform: scale(1.0);
   }
   100% {
-    background-position: 95% top;
-    transform: scale(1.05);
+    background-position: var(--mobile-pos, 50% 25%);
+    transform: scale(1.06);
   }
 }
 
@@ -798,13 +794,13 @@ body.reveal-active .container {
     margin: 0 auto 16px;
   }
   .ambient-bg-slide {
-    background-size: 135% 100%;
-    background-position: var(--face-x, 50%) var(--face-y, 25%);
-    transform-origin: center center;
+    background-size: cover;
+    background-position: var(--mobile-pos, 50% 25%);
+    transform-origin: var(--mobile-pos, 50% 25%);
     animation: none;
   }
   .ambient-bg-slide.active {
-    opacity: 0.85;
-    animation: storyRevealSweep 6.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    opacity: 0.82;
+    animation: mobileGentleCloseUp 14s linear forwards;
   }
 }
