@@ -24,23 +24,45 @@
       <span>🔥 נהוראי מתחמם... תתכוננו לזריקת הכיסא 🪑💥</span>
     </div>
 
-    <!-- Realistic Glass Shatter / Crack Overlay -->
-    <div class="glass-cracks" id="glass-cracks">
+    <!-- Realistic 3D Tempered Glass Shatter Engine -->
+    <div class="glass-shatter-engine" id="glass-shatter-engine">
+      <!-- Blinding impact flash right when chair strikes -->
+      <div class="impact-flash" id="impact-flash"></div>
+
+      <!-- Realistic jagged impact fractures centered exactly where the chair hits (520, 480) -->
       <svg class="crack-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none">
-        <g stroke="rgba(255, 255, 255, 0.95)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 10px rgba(255, 234, 0, 0.85))">
-          <path d="M500,500 L120,80 M500,500 L880,110 M500,500 L950,520 M500,500 L820,910 M500,500 L490,980 M500,500 L150,880 M500,500 L50,480 M500,500 L310,180" />
-          <path d="M500,500 L380,320 L210,290 L80,160 M500,500 L620,340 L790,260 L920,310 M500,500 L680,610 L840,680 L960,820 M500,500 L420,680 L290,790 L110,950 M500,500 L280,510 L140,580 L20,660" />
-          <path d="M380,320 L620,340 L680,610 L420,680 L280,510 Z" stroke-width="2" opacity="0.85" />
-          <path d="M210,290 L790,260 L840,680 L290,790 L140,580 Z" stroke-width="1.5" opacity="0.65" />
-          <path d="M440,430 L570,440 L590,560 L450,580 Z" stroke-width="2.5" opacity="0.95" />
+        <defs>
+          <filter id="glass-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <!-- Outer stress fractures -->
+        <g stroke="rgba(255, 255, 255, 0.65)" stroke-width="1.2" fill="none" opacity="0.9">
+          <path d="M520,480 L480,410 L440,390 L310,220 L150,110 M520,480 L560,400 L610,350 L780,180 L920,80 M520,480 L590,460 L670,440 L850,430 L980,400 M520,480 L580,530 L660,590 L820,740 L950,890 M520,480 L510,570 L520,660 L540,840 L560,980 M520,480 L450,540 L380,610 L220,780 L80,940 M520,480 L440,490 L340,510 L180,530 L20,550 M520,480 L470,440 L390,360 L240,240 L60,140" />
+          <path d="M520,480 L540,360 L680,210 L890,60 M520,480 L630,510 L810,580 L990,650 M520,480 L460,620 L360,790 L260,980 M520,480 L360,450 L190,380 L10,310" />
         </g>
+        <!-- Primary sharp impact cracks -->
+        <g stroke="rgba(255, 255, 255, 0.98)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#glass-glow)">
+          <path d="M520,480 L460,380 L350,290 L210,140 L40,30 M520,480 L570,390 L680,310 L830,190 L960,60 M520,480 L620,460 L760,440 L910,410 L990,390 M520,480 L600,560 L730,670 L870,810 L980,930 M520,480 L510,610 L530,760 L550,910 L560,990 M520,480 L430,560 L320,670 L170,820 L30,970 M520,480 L410,490 L280,510 L120,540 L10,560 M520,480 L440,420 L320,310 L160,180 L20,80" />
+        </g>
+        <!-- Concentric shock rings -->
+        <g stroke="rgba(255, 255, 255, 0.85)" stroke-width="1.8" fill="none" opacity="0.85">
+          <path d="M480,410 L560,400 L590,460 L580,530 L510,570 L450,540 L440,490 L470,440 Z" />
+          <path d="M440,390 L610,350 L670,440 L660,590 L520,660 L380,610 L340,510 L390,360 Z" />
+          <path d="M350,290 L680,310 L760,440 L730,670 L530,760 L320,670 L280,510 L320,310 Z" stroke-width="2.2" opacity="0.95" />
+          <path d="M210,140 L830,190 L910,410 L870,810 L550,910 L170,820 L120,540 L160,180 Z" stroke-width="1.4" opacity="0.6" />
+        </g>
+        <!-- Impact crater shatter center -->
+        <circle cx="520" cy="480" r="28" fill="rgba(255, 255, 255, 0.35)" stroke="rgba(255, 255, 255, 0.95)" stroke-width="3" filter="url(#glass-glow)" />
+        <circle cx="520" cy="480" r="14" fill="rgba(255, 234, 0, 0.6)" stroke="#fff" stroke-width="2" />
       </svg>
-      <div class="glass-shards">
-        <div class="shard shard-1"></div>
-        <div class="shard shard-2"></div>
-        <div class="shard shard-3"></div>
-        <div class="shard shard-4"></div>
-      </div>
+
+      <!-- Dynamic 3D Shards Container -->
+      <div class="shards-container" id="shards-container"></div>
     </div>
   </div>
 

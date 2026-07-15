@@ -160,96 +160,93 @@ body.shake { animation: screenShake 0.5s ease-in-out; }
   50% { opacity: 0.75; transform: scale(0.98); }
 }
 
-/* ---------- Glass Shatter Overlay ---------- */
-.glass-cracks {
+/* ---------- Realistic 3D Tempered Glass Shatter Engine ---------- */
+.glass-shatter-engine {
   position: absolute;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 40;
+  z-index: 50;
   pointer-events: none;
   opacity: 0;
-  transform: scale(0.95);
-  transition: opacity 0.15s ease-in, transform 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(0.96);
+  transition: opacity 0.1s ease-in, transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
-.glass-cracks.shatter-active {
+.glass-shatter-engine.shatter-active {
   opacity: 1;
-  transform: scale(1.06);
-  animation: glassBreakFlash 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform: scale(1.05);
+}
+
+.impact-flash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 52% 48%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 234, 0, 0.6) 20%, transparent 65%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.glass-shatter-engine.shatter-active .impact-flash {
+  animation: impactFlashAnim 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes impactFlashAnim {
+  0% { opacity: 1; transform: scale(0.85); }
+  20% { opacity: 0.9; transform: scale(1.15); }
+  100% { opacity: 0; transform: scale(1.6); }
 }
 
 .crack-svg {
   width: 100%;
   height: 100%;
   display: block;
+  opacity: 0;
 }
 
-@keyframes glassBreakFlash {
-  0% { opacity: 0; transform: scale(0.95); filter: drop-shadow(0 0 15px #fff); }
-  15% { opacity: 1; transform: scale(1.02); filter: drop-shadow(0 0 40px var(--neon)); }
-  75% { opacity: 1; transform: scale(1.06) rotate(0.8deg); filter: drop-shadow(0 0 50px var(--neon)); }
-  100% { opacity: 0; transform: scale(1.22) rotate(2deg); filter: blur(8px); }
+.glass-shatter-engine.shatter-active .crack-svg {
+  animation: crackStayAndFade 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.glass-shards {
+@keyframes crackStayAndFade {
+  0% { opacity: 0; transform: scale(0.98); filter: drop-shadow(0 0 10px #fff); }
+  8% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 35px var(--neon)); }
+  70% { opacity: 1; transform: scale(1.04); filter: drop-shadow(0 0 40px var(--neon)); }
+  100% { opacity: 0; transform: scale(1.12) rotate(1deg); filter: blur(6px); }
+}
+
+.shards-container {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  perspective: 1200px;
 }
 
-.shard {
+.dynamic-shard {
   position: absolute;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 234, 0, 0.12) 100%);
-  backdrop-filter: blur(8px);
-  border: 2px solid rgba(255, 255, 255, 0.75);
-  box-shadow: 0 0 30px rgba(255, 234, 0, 0.45), inset 0 0 25px rgba(255, 255, 255, 0.3);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 234, 0, 0.22) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 25px rgba(255, 234, 0, 0.5), inset 0 0 20px rgba(255, 255, 255, 0.4);
   opacity: 0;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
 }
 
-.glass-cracks.shatter-active .shard-1 {
-  width: 50vw; height: 50vh; top: 0; left: 0;
-  clip-path: polygon(0 0, 100% 0, 65% 100%, 0 75%);
-  animation: shardFly1 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-.glass-cracks.shatter-active .shard-2 {
-  width: 60vw; height: 55vh; top: 0; right: 0;
-  clip-path: polygon(25% 0, 100% 0, 100% 85%, 0 100%);
-  animation: shardFly2 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-.glass-cracks.shatter-active .shard-3 {
-  width: 55vw; height: 60vh; bottom: 0; left: 0;
-  clip-path: polygon(0 35%, 85% 0, 100% 100%, 0 100%);
-  animation: shardFly3 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-.glass-cracks.shatter-active .shard-4 {
-  width: 55vw; height: 55vh; bottom: 0; right: 0;
-  clip-path: polygon(25% 0, 100% 25%, 100% 100%, 0 100%);
-  animation: shardFly4 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.glass-shatter-engine.shatter-active .dynamic-shard {
+  animation: shardExplode 2.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes shardFly1 {
-  0% { opacity: 1; transform: translate(0,0) rotate(0) scale(1); }
-  20% { opacity: 1; transform: translate(-4vw, -4vh) rotate(-5deg) scale(1.05); }
-  100% { opacity: 0; transform: translate(-22vw, -22vh) rotate(-35deg) scale(1.35); }
-}
-@keyframes shardFly2 {
-  0% { opacity: 1; transform: translate(0,0) rotate(0) scale(1); }
-  20% { opacity: 1; transform: translate(4vw, -3vh) rotate(6deg) scale(1.05); }
-  100% { opacity: 0; transform: translate(25vw, -18vh) rotate(42deg) scale(1.4); }
-}
-@keyframes shardFly3 {
-  0% { opacity: 1; transform: translate(0,0) rotate(0) scale(1); }
-  20% { opacity: 1; transform: translate(-3vw, 4vh) rotate(-4deg) scale(1.05); }
-  100% { opacity: 0; transform: translate(-20vw, 25vh) rotate(-30deg) scale(1.35); }
-}
-@keyframes shardFly4 {
-  0% { opacity: 1; transform: translate(0,0) rotate(0) scale(1); }
-  20% { opacity: 1; transform: translate(4vw, 4vh) rotate(5deg) scale(1.05); }
-  100% { opacity: 0; transform: translate(26vw, 24vh) rotate(38deg) scale(1.45); }
+@keyframes shardExplode {
+  0% { opacity: 1; transform: translate3d(0, 0, 0) rotateX(0) rotateY(0) rotateZ(0) scale(1); }
+  15% { opacity: 1; transform: translate3d(var(--fly-x-mid), var(--fly-y-mid), 120px) rotateX(var(--rot-x-mid)) rotateY(var(--rot-y-mid)) rotateZ(var(--rot-z-mid)) scale(1.08); }
+  100% { opacity: 0; transform: translate3d(var(--fly-x), var(--fly-y), 450px) rotateX(var(--rot-x)) rotateY(var(--rot-y)) rotateZ(var(--rot-z)) scale(1.45); }
 }
 
 @keyframes floatLogo {

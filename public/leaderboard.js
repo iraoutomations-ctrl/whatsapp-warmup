@@ -298,7 +298,7 @@ function setupCinematicIntro() {
   const overlay = document.getElementById('intro-overlay');
   const video = document.getElementById('intro-video');
   const soundBtn = document.getElementById('intro-sound-btn');
-  const glassCracks = document.getElementById('glass-cracks');
+  const shatterEngine = document.getElementById('glass-shatter-engine');
   const ctaBtn = document.getElementById('cta-signup-btn');
 
   if (!overlay || !video) return;
@@ -306,17 +306,73 @@ function setupCinematicIntro() {
   let finished = false;
   let shatterTriggered = false;
 
+  const createRealisticShards = () => {
+    const container = document.getElementById('shards-container');
+    if (!container || container.children.length > 0) return;
+
+    const numShards = 36;
+    for (let i = 0; i < numShards; i++) {
+      const shard = document.createElement('div');
+      shard.className = 'dynamic-shard';
+
+      // Cluster origin around impact center (52% X, 48% Y)
+      const centerX = 52 + (Math.random() * 26 - 13);
+      const centerY = 48 + (Math.random() * 26 - 13);
+      const width = 7 + Math.random() * 16;
+      const height = 7 + Math.random() * 16;
+
+      shard.style.width = `${width}vw`;
+      shard.style.height = `${height}vh`;
+      shard.style.left = `${centerX - width / 2}vw`;
+      shard.style.top = `${centerY - height / 2}vh`;
+
+      // Random jagged 4-point polygon geometry
+      const p1x = Math.floor(Math.random() * 30);
+      const p1y = Math.floor(Math.random() * 30);
+      const p2x = Math.floor(70 + Math.random() * 30);
+      const p2y = Math.floor(Math.random() * 30);
+      const p3x = Math.floor(70 + Math.random() * 30);
+      const p3y = Math.floor(70 + Math.random() * 30);
+      const p4x = Math.floor(Math.random() * 30);
+      const p4y = Math.floor(70 + Math.random() * 30);
+      shard.style.clipPath = `polygon(${p1x}% ${p1y}%, ${p2x}% ${p2y}%, ${p3x}% ${p3y}%, ${p4x}% ${p4y}%)`;
+
+      // Explosion outward physics vector
+      const angle = (i / numShards) * Math.PI * 2 + (Math.random() * 0.5 - 0.25);
+      const dist = 38 + Math.random() * 62;
+      const flyX = Math.cos(angle) * dist;
+      const flyY = Math.sin(angle) * dist + (14 + Math.random() * 28);
+
+      shard.style.setProperty('--fly-x-mid', `${flyX * 0.32}vw`);
+      shard.style.setProperty('--fly-y-mid', `${flyY * 0.28}vh`);
+      shard.style.setProperty('--fly-x', `${flyX}vw`);
+      shard.style.setProperty('--fly-y', `${flyY}vh`);
+
+      // 3D rotations during flight
+      shard.style.setProperty('--rot-x-mid', `${Math.random() * 180 - 90}deg`);
+      shard.style.setProperty('--rot-y-mid', `${Math.random() * 180 - 90}deg`);
+      shard.style.setProperty('--rot-z-mid', `${Math.random() * 180 - 90}deg`);
+      shard.style.setProperty('--rot-x', `${(Math.random() * 720 - 360).toFixed(1)}deg`);
+      shard.style.setProperty('--rot-y', `${(Math.random() * 720 - 360).toFixed(1)}deg`);
+      shard.style.setProperty('--rot-z', `${(Math.random() * 720 - 360).toFixed(1)}deg`);
+
+      shard.style.animationDelay = `${(Math.random() * 0.08).toFixed(3)}s`;
+      container.appendChild(shard);
+    }
+  };
+
   const triggerShatter = () => {
     if (shatterTriggered) return;
     shatterTriggered = true;
 
-    // Shake the screen as the chair hits!
+    // Shake the screen violently when the chair strikes
     document.body.classList.add('shake');
     setTimeout(() => document.body.classList.remove('shake'), 650);
 
-    // Flash the realistic glass crack SVG and flying shards!
-    if (glassCracks) {
-      glassCracks.classList.add('shatter-active');
+    // Populate shards and ignite the tempered glass shatter engine
+    createRealisticShards();
+    if (shatterEngine) {
+      shatterEngine.classList.add('shatter-active');
     }
   };
 
@@ -330,25 +386,25 @@ function setupCinematicIntro() {
       setTimeout(() => ctaBtn.classList.remove('pulse'), 4200);
     }
 
-    // Wait 900ms (~1 second of pure glass cracking and shard flying) before starting the slow 1.5s fade out!
+    // Wait 950ms (~1 full second of glass cracking and outward explosion) before starting slow 1.5s fade out
     setTimeout(() => {
       overlay.classList.add('fade-out');
-    }, 900);
+    }, 950);
 
     setTimeout(() => {
       overlay.style.display = 'none';
       video.pause();
-    }, 2400);
+    }, 2450);
   };
 
   // Chair throw moment trigger near end of video
   video.addEventListener('timeupdate', () => {
     if (!video.duration) return;
     const remaining = video.duration - video.currentTime;
-    if (!shatterTriggered && remaining < 0.7) {
+    if (!shatterTriggered && remaining < 0.72) {
       triggerShatter();
     }
-    if (!finished && remaining < 0.2) {
+    if (!finished && remaining < 0.18) {
       finishIntro();
     }
   });
