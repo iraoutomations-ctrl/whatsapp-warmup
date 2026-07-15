@@ -433,6 +433,10 @@ function setupAmbientSlideshow() {
   ];
 
   let currentIdx = 0;
+  // Must stay >= the slower of the desktop zoom transition (14s, see
+  // .ambient-bg-slide's transform transition) and the mobile reveal-pan
+  // animation (16s, mobileStoryReveal) - otherwise a slide gets swapped out
+  // mid-animation and neither ever plays to completion.
   setInterval(() => {
     const introOverlay = document.getElementById('intro-overlay');
     if (introOverlay && introOverlay.style.display !== 'none') return;
@@ -440,7 +444,7 @@ function setupAmbientSlideshow() {
     slides[currentIdx].classList.remove('active');
     currentIdx = (currentIdx + 1) % slides.length;
     slides[currentIdx].classList.add('active');
-  }, 6500);
+  }, 16500);
 }
 
 // ---------- VIP Story Reels Modal ----------
