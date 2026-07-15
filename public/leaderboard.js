@@ -415,12 +415,12 @@ function setupAmbientSlideshow() {
   if (!slides.length) return;
 
   const slideUrls = [
-    '/nehorai/slide1.png',
-    '/nehorai/slide2.png',
-    '/nehorai/slide3.png',
-    '/nehorai/slide4.png',
-    '/nehorai/slide5.png',
-    '/nehorai/character.png'
+    '/nehorai/slide1.jpg',
+    '/nehorai/slide2.jpg',
+    '/nehorai/slide3.jpg',
+    '/nehorai/slide4.jpg',
+    '/nehorai/slide5.jpg',
+    '/nehorai/character.jpg'
   ];
 
   let currentIdx = 0;
