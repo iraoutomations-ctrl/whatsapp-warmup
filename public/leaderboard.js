@@ -330,25 +330,25 @@ function setupCinematicIntro() {
       setTimeout(() => ctaBtn.classList.remove('pulse'), 4200);
     }
 
-    // Fade out intro overlay right as glass shatters
+    // Wait 900ms (~1 second of pure glass cracking and shard flying) before starting the slow 1.5s fade out!
     setTimeout(() => {
       overlay.classList.add('fade-out');
-    }, 120);
+    }, 900);
 
     setTimeout(() => {
       overlay.style.display = 'none';
       video.pause();
-    }, 780);
+    }, 2400);
   };
 
   // Chair throw moment trigger near end of video
   video.addEventListener('timeupdate', () => {
     if (!video.duration) return;
     const remaining = video.duration - video.currentTime;
-    if (!shatterTriggered && remaining < 0.65) {
+    if (!shatterTriggered && remaining < 0.7) {
       triggerShatter();
     }
-    if (!finished && remaining < 0.45) {
+    if (!finished && remaining < 0.2) {
       finishIntro();
     }
   });
@@ -362,11 +362,20 @@ function setupCinematicIntro() {
         soundBtn.innerHTML = '🔊 סאונד פועל במלוא העוצמה';
         soundBtn.classList.add('active');
       }
+      // CRITICAL FOR MOBILE SAFARI / CHROME ON PHONE: Explicitly resume play so mobile touch never freezes or pauses playback!
+      const p = video.play();
+      if (p !== undefined) {
+        p.catch(() => {
+          video.muted = true;
+          video.play().catch(() => {});
+        });
+      }
     }
   };
 
   if (soundBtn) {
-    soundBtn.addEventListener('click', () => {
+    soundBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       if (video.muted) {
         enableSound();
       } else {
@@ -377,11 +386,13 @@ function setupCinematicIntro() {
     });
   }
 
-  // Unmute automatically on ANY interaction (click, touch, keydown, pointerdown) if browser blocked initial unmuted play
-  const unlockSoundEvents = ['click', 'pointerdown', 'touchstart', 'keydown'];
-  const unlockHandler = () => {
-    enableSound();
-    unlockSoundEvents.forEach(evt => window.removeEventListener(evt, unlockHandler, true));
+  // Unmute automatically on tap/click without freezing mobile video
+  const unlockSoundEvents = ['click', 'touchend'];
+  const unlockHandler = (e) => {
+    if (video.muted) {
+      enableSound();
+      unlockSoundEvents.forEach(evt => window.removeEventListener(evt, unlockHandler, true));
+    }
   };
   unlockSoundEvents.forEach(evt => window.addEventListener(evt, unlockHandler, true));
 
