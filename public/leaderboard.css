@@ -782,23 +782,27 @@ body.reveal-active .container {
 }
 
 /* A portrait phone screen can only ever show ~25% of these wide landscape
-   scenes at once in `background-size: cover` (no distortion). Rather than
-   parking on Nehorai's face for the whole slide and hiding the rest of the
-   scene (the police chase, the friends, the crowd), pan slowly in from the
-   far edge to reveal it, then settle on his face for the remainder - "see
-   the whole story" and "close-up on Nehorai" instead of picking one. */
+   scenes at once in `background-size: cover` (no distortion) - there's no
+   way to show the full frame at once without either cropping most of the
+   width (a static close-up) or leaving empty bars top/bottom (`contain`,
+   which visibly hurts the image). Panning across over time is the only way
+   to reveal the whole scene without distorting or letterboxing it.
+   Two distinct phases, both slow: 0-55% is a wide, barely-zoomed pan across
+   the scene (the police chase, the friends, the crowd); 55-100% is a real
+   zoom punch-in on Nehorai's face once the pan arrives there, so it reads
+   as "wide shot, then close-up" rather than just sliding sideways. */
 @keyframes mobileStoryReveal {
   0% {
     background-position: var(--mobile-start, 10% 25%);
     transform: scale(1.0);
   }
-  40% {
+  55% {
     background-position: var(--mobile-pos, 50% 25%);
-    transform: scale(1.015);
+    transform: scale(1.05);
   }
   100% {
     background-position: var(--mobile-pos, 50% 25%);
-    transform: scale(1.06);
+    transform: scale(1.4);
   }
 }
 
@@ -818,6 +822,6 @@ body.reveal-active .container {
   }
   .ambient-bg-slide.active {
     opacity: 0.82;
-    animation: mobileStoryReveal 16s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    animation: mobileStoryReveal 24s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   }
 }
