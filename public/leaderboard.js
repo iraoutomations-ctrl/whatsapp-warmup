@@ -292,25 +292,86 @@ function setupLoadMoreButton() {
   });
 }
 
-// ---------- Screen shake trigger (chair-throw moment near video end) ----------
+// ---------- Cinematic Intro Splash Screen & Screen Shake ----------
 
-function setupScreenShake() {
-  const video = document.getElementById('hero-video');
-  let shaken = false;
+function setupCinematicIntro() {
+  const overlay = document.getElementById('intro-overlay');
+  const video = document.getElementById('intro-video');
+  const skipBtn = document.getElementById('intro-skip-btn');
+  const soundBtn = document.getElementById('intro-sound-btn');
+  const ctaBtn = document.getElementById('cta-signup-btn');
+
+  if (!overlay || !video) return;
+
+  let finished = false;
+
+  const finishIntro = () => {
+    if (finished) return;
+    finished = true;
+
+    // Shake the screen as the chair flies!
+    document.body.classList.add('shake');
+    setTimeout(() => document.body.classList.remove('shake'), 650);
+
+    if (ctaBtn) {
+      ctaBtn.classList.add('pulse');
+      setTimeout(() => ctaBtn.classList.remove('pulse'), 4200);
+    }
+
+    // Shatter fade out overlay and reveal leaderboard
+    overlay.classList.add('fade-out');
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      video.pause();
+    }, 650);
+  };
+
+  // Chair throw moment trigger near end of video
   video.addEventListener('timeupdate', () => {
     if (!video.duration) return;
     const remaining = video.duration - video.currentTime;
-    if (!shaken && remaining < 0.6) {
-      shaken = true;
-      document.body.classList.add('shake');
-      setTimeout(() => document.body.classList.remove('shake'), 500);
-      const cta = document.getElementById('cta-signup-btn');
-      cta.classList.add('pulse');
-      setTimeout(() => cta.classList.remove('pulse'), 4200);
+    if (!finished && remaining < 0.6) {
+      finishIntro();
     }
   });
-  video.addEventListener('seeked', () => {
-    if (video.currentTime < 0.3) shaken = false;
+
+  video.addEventListener('ended', finishIntro);
+
+  if (skipBtn) {
+    skipBtn.addEventListener('click', finishIntro);
+  }
+
+  if (soundBtn) {
+    soundBtn.addEventListener('click', () => {
+      if (video.muted) {
+        video.muted = false;
+        soundBtn.innerHTML = '🔊 שמע פועל';
+        soundBtn.classList.add('active');
+      } else {
+        video.muted = true;
+        soundBtn.innerHTML = '🔇 לחץ להפעלת שמע';
+        soundBtn.classList.remove('active');
+      }
+    });
+  }
+
+  // Unmute if user taps anywhere on overlay before end
+  overlay.addEventListener('click', (e) => {
+    if (e.target !== skipBtn && e.target !== soundBtn && video.muted) {
+      video.muted = false;
+      if (soundBtn) {
+        soundBtn.innerHTML = '🔊 שמע פועל';
+        soundBtn.classList.add('active');
+      }
+    }
+  });
+
+  // Attempt autoplay immediately
+  video.play().catch(() => {
+    video.muted = true;
+    video.play().catch(() => {
+      // If blocked entirely, wait for click
+    });
   });
 }
 
@@ -417,12 +478,12 @@ function setupSignupFlow() {
 // ---------- Init ----------
 
 document.addEventListener('DOMContentLoaded', () => {
+  setupCinematicIntro();
   loadStatusWidget();
   startTelemetryLoop();
   loadFeed();
   setInterval(loadFeed, POLL_INTERVAL_MS);
   setInterval(updateNextTargetWidget, 6000);
-  setupScreenShake();
   setupDocsTabs();
   setupSignupFlow();
   setupShowAllButton();

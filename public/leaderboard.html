@@ -12,10 +12,21 @@
 </head>
 <body>
 
-  <section class="hero">
-    <div class="hero-video-wrap">
-      <video id="hero-video" src="/nehorai/nehori.mp4" autoplay muted loop playsinline></video>
+  <!-- Cinematic Intro Splash Screen -->
+  <div class="intro-overlay" id="intro-overlay">
+    <div class="intro-video-box">
+      <video id="intro-video" src="/nehorai/nehori.mp4" playsinline preload="auto"></video>
+      <div class="intro-controls">
+        <button class="intro-sound-btn" id="intro-sound-btn" title="הפעל שמע">🔇 לחץ להפעלת שמע</button>
+        <button class="intro-skip-btn" id="intro-skip-btn" title="דלג על הפתיח">⏭️ דלג על הפתיח</button>
+      </div>
     </div>
+    <div class="intro-caption">
+      <span>🔥 נהוראי מתחמם... תתכוננו לזריקת הכיסא 🪑💥</span>
+    </div>
+  </div>
+
+  <section class="hero">
     <img class="hero-logo" src="/nehorai/character.png" alt="נהוראי">
     <h1>נהוראי</h1>
     <p class="tagline">הבוט שלא עונה בזמן, אבל תמיד עונה בסטייל</p>
