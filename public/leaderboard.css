@@ -773,17 +773,26 @@ body.reveal-active .container {
   margin-top: 40px;
 }
 
+@keyframes mobileKenBurns {
+  0% { background-position: 5% top; }
+  50% { background-position: 95% top; }
+  100% { background-position: 50% top; }
+}
+
 @media (max-width: 768px) {
   .hero-logo {
-    width: 155px;
-    height: 155px;
+    width: 160px;
+    height: 160px;
     border-width: 3.5px;
-    object-position: center 18%;
+    object-position: center 25%;
+    margin: 0 auto 16px;
   }
   .ambient-bg-slide {
-    background-position: center 25%;
+    background-size: 145% 100%;
+    background-position: center top;
+    animation: mobileKenBurns 18s ease-in-out infinite alternate;
   }
   .ambient-bg-slide.active {
-    opacity: 0.78;
+    opacity: 0.82;
   }
 }
