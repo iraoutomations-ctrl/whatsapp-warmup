@@ -12,6 +12,25 @@
 </head>
 <body>
 
+  <!-- Ambient Cyberpunk Background Slideshow -->
+  <div class="ambient-bg-slideshow" id="ambient-bg-slideshow">
+    <div class="ambient-bg-slide active" style="background-image: url('/nehorai/slide1.png')"></div>
+    <div class="ambient-bg-slide" style="background-image: url('/nehorai/slide2.png')"></div>
+    <div class="ambient-bg-slide" style="background-image: url('/nehorai/slide3.png')"></div>
+    <div class="ambient-bg-slide" style="background-image: url('/nehorai/slide4.png')"></div>
+    <div class="ambient-bg-slide" style="background-image: url('/nehorai/slide5.png')"></div>
+  </div>
+
+  <!-- VIP Story Reels Modal -->
+  <div class="nehorai-story-modal" id="nehorai-story-modal">
+    <div class="story-modal-backdrop" id="story-modal-backdrop"></div>
+    <div class="story-modal-content">
+      <button class="story-close-btn" id="story-close-btn">✖ סגור</button>
+      <video id="story-video" src="/nehorai/story1.mp4" playsinline controls></video>
+      <div class="story-caption">🔥 הסטורי של נהוראי – לייב מהשכונה</div>
+    </div>
+  </div>
+
   <!-- Cinematic Intro Splash Screen -->
   <div class="intro-overlay" id="intro-overlay">
     <div class="intro-video-box">
@@ -25,7 +44,10 @@
   </div>
 
   <section class="hero">
-    <img class="hero-logo" src="/nehorai/character.png" alt="נהוראי">
+    <div class="hero-logo-wrapper" id="hero-story-trigger" title="לחץ לצפייה בסטורי / רילז של נהוראי">
+      <img class="hero-logo" id="hero-logo-img" src="/nehorai/character.png" alt="נהוראי">
+      <div class="story-badge">🎬 סטורי לייב</div>
+    </div>
     <h1>נהוראי</h1>
     <p class="tagline">הבוט שלא עונה בזמן, אבל תמיד עונה בסטייל</p>
 

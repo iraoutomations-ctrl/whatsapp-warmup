@@ -407,6 +407,73 @@ function setupCinematicIntro() {
   });
 }
 
+// ---------- Ambient Cyberpunk Background Slideshow & Profile Photo Cycle ----------
+
+function setupAmbientSlideshow() {
+  const slides = document.querySelectorAll('.ambient-bg-slide');
+  const heroImg = document.getElementById('hero-logo-img');
+  if (!slides.length) return;
+
+  const slideUrls = [
+    '/nehorai/slide1.png',
+    '/nehorai/slide2.png',
+    '/nehorai/slide3.png',
+    '/nehorai/slide4.png',
+    '/nehorai/slide5.png',
+    '/nehorai/character.png'
+  ];
+
+  let currentIdx = 0;
+  setInterval(() => {
+    slides[currentIdx].classList.remove('active');
+    currentIdx = (currentIdx + 1) % slides.length;
+    slides[currentIdx].classList.add('active');
+
+    // Also softly cross-fade Nehorai's profile picture circle on the Hero section every interval!
+    if (heroImg) {
+      heroImg.style.transition = 'opacity 0.4s ease';
+      heroImg.style.opacity = '0.15';
+      setTimeout(() => {
+        heroImg.src = slideUrls[currentIdx];
+        heroImg.style.opacity = '1';
+      }, 400);
+    }
+  }, 6500);
+}
+
+// ---------- VIP Story Reels Modal ----------
+
+function setupStoryModal() {
+  const trigger = document.getElementById('hero-story-trigger');
+  const modal = document.getElementById('nehorai-story-modal');
+  const closeBtn = document.getElementById('story-close-btn');
+  const backdrop = document.getElementById('story-modal-backdrop');
+  const storyVideo = document.getElementById('story-video');
+
+  if (!trigger || !modal || !storyVideo) return;
+
+  const openStory = () => {
+    modal.classList.add('active');
+    storyVideo.currentTime = 0;
+    const p = storyVideo.play();
+    if (p !== undefined) {
+      p.catch(() => {
+        storyVideo.muted = true;
+        storyVideo.play().catch(() => {});
+      });
+    }
+  };
+
+  const closeStory = () => {
+    modal.classList.remove('active');
+    storyVideo.pause();
+  };
+
+  trigger.addEventListener('click', openStory);
+  if (closeBtn) closeBtn.addEventListener('click', closeStory);
+  if (backdrop) backdrop.addEventListener('click', closeStory);
+}
+
 // ---------- Docs tabs ----------
 
 function setupDocsTabs() {
@@ -511,6 +578,8 @@ function setupSignupFlow() {
 
 document.addEventListener('DOMContentLoaded', () => {
   setupCinematicIntro();
+  setupAmbientSlideshow();
+  setupStoryModal();
   loadStatusWidget();
   startTelemetryLoop();
   loadFeed();
