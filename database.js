@@ -86,6 +86,23 @@ const GLOBAL_SETTINGS_DEFAULTS = {
   leaderboardTopics: ['עבודה', 'לימודים', 'סתם שיחת חולין', 'חברים']
 };
 
+// First-boot seed for the story-reel video gallery (data/videos.json) -
+// registers every /nehorai/story*.mp4 file already shipped with the app.
+// Only used if videos.json doesn't exist yet; adding more videos later goes
+// through the admin videos API instead of editing this list.
+function defaultVideosSeed() {
+  const now = new Date().toISOString();
+  const filenames = ['story1.mp4', 'story2.mp4', 'story3.mp4', 'story4.mp4', 'story5.mp4', 'story6.mp4', 'story7.mp4'];
+  return filenames.map((filename, i) => ({
+    id: crypto.randomUUID(),
+    filename,
+    caption: i === 0 ? '🔥 הסטורי של נהוראי – לייב מהשכונה' : '',
+    voteCount: 0,
+    enabled: true,
+    createdAt: now
+  }));
+}
+
 class JSONDatabase {
   constructor() {
     this.settings = {};
@@ -95,6 +112,8 @@ class JSONDatabase {
     this.stats = {};
     this.chats = [];
     this.votes = [];
+    this.videos = [];
+    this.videoVotes = [];
     this.isInitialized = false;
     this.writeQueue = {}; // Map to queue concurrent writes for each file type
 
@@ -136,6 +155,10 @@ class JSONDatabase {
       // Initialize Chats (leaderboard) and Votes
       this.chats = await this._loadOrInitFile('chats.json', []);
       this.votes = await this._loadOrInitFile('votes.json', []);
+
+      // Initialize the story-reel video gallery and its likes
+      this.videos = await this._loadOrInitFile('videos.json', defaultVideosSeed());
+      this.videoVotes = await this._loadOrInitFile('videoVotes.json', []);
 
       // Initialize bot instances (WhatsApp numbers). Special-cased instead
       // of _loadOrInitFile so "file missing" (never migrated) is never
@@ -875,6 +898,100 @@ class JSONDatabase {
     ]);
 
     return { chatId, voteCount: chat.voteCount };
+  }
+
+  // ---- Story-reel video gallery operations ----
+
+  // Public-facing serializer, explicit allow-list like toPublicChat - no
+  // internal fields exist on a video record today, but this keeps the same
+  // "never leak by forgetting to filter" discipline as the chat feed.
+  toPublicVideo(video) {
+    return {
+      id: video.id,
+      url: `/nehorai/${video.filename}`,
+      caption: video.caption || '',
+      voteCount: video.voteCount
+    };
+  }
+
+  getVideos() {
+    return [...this.videos];
+  }
+
+  getPublicVideos() {
+    return this.videos.filter(v => v.enabled).map(v => this.toPublicVideo(v));
+  }
+
+  getVideoById(id) {
+    return this.videos.find(v => v.id === id) || null;
+  }
+
+  async addVideo({ filename, caption }) {
+    if (!filename) {
+      throw new Error('filename is required');
+    }
+    const newVideo = {
+      id: crypto.randomUUID(),
+      filename,
+      caption: caption || '',
+      voteCount: 0,
+      enabled: true,
+      createdAt: new Date().toISOString()
+    };
+    this.videos.push(newVideo);
+    await this._saveFile('videos.json', this.videos);
+    return newVideo;
+  }
+
+  // Content-only allow-list, mirrors updateChat - voteCount must only ever
+  // move through recordVideoVote's dedup-checked increment.
+  async updateVideo(id, updates) {
+    const idx = this.videos.findIndex(v => v.id === id);
+    if (idx === -1) {
+      throw new Error(`Video not found: ${id}`);
+    }
+    const { caption, enabled } = updates;
+    const safeUpdates = {};
+    if (caption !== undefined) safeUpdates.caption = caption;
+    if (enabled !== undefined) safeUpdates.enabled = !!enabled;
+    this.videos[idx] = { ...this.videos[idx], ...safeUpdates };
+    await this._saveFile('videos.json', this.videos);
+    return this.videos[idx];
+  }
+
+  async deleteVideo(id) {
+    const idx = this.videos.findIndex(v => v.id === id);
+    if (idx === -1) {
+      throw new Error(`Video not found: ${id}`);
+    }
+    this.videos.splice(idx, 1);
+    await this._saveFile('videos.json', this.videos);
+  }
+
+  // Same dedup-then-push discipline as recordVote (see comment above it).
+  async recordVideoVote(videoId, voterId) {
+    const video = this.getVideoById(videoId);
+    if (!video) {
+      throw new Error(`Video not found: ${videoId}`);
+    }
+    if (!video.enabled) {
+      throw new Error('Video is not open for voting');
+    }
+
+    const alreadyVoted = this.videoVotes.some(v => v.videoId === videoId && v.voterId === voterId);
+    if (alreadyVoted) {
+      throw new Error('Already voted for this video');
+    }
+
+    this.videoVotes.push({ videoId, voterId, createdAt: new Date().toISOString() });
+    video.voteCount += 1;
+
+    await Promise.all([
+      this._saveFile('videoVotes.json', this.videoVotes),
+      this._saveFile('videos.json', this.videos)
+    ]);
+
+    return { videoId, voteCount: video.voteCount };
   }
 }
 

@@ -261,15 +261,7 @@ body.reveal-active .container {
   position: relative;
   z-index: 10;
   width: 90%;
-  max-width: 440px;
-  background: var(--carbon-card);
-  border: 2px solid var(--neon);
-  border-radius: 24px;
-  padding: 16px;
-  box-shadow: 0 0 50px var(--neon-glow);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  max-width: 400px;
   transform: scale(0.92);
   transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -279,15 +271,18 @@ body.reveal-active .container {
 }
 
 .story-close-btn {
-  align-self: flex-end;
+  position: absolute;
+  top: -44px;
+  left: 0;
+  z-index: 30;
   background: rgba(255, 68, 68, 0.2);
   border: 1px solid #ff4444;
   color: #fff;
-  padding: 6px 14px;
-  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
   font-weight: 700;
   cursor: pointer;
-  margin-bottom: 12px;
   transition: all 0.2s ease;
 }
 
@@ -296,20 +291,82 @@ body.reveal-active .container {
   box-shadow: 0 0 15px rgba(255, 68, 68, 0.6);
 }
 
-.story-modal-content video {
-  width: 100%;
-  max-height: 65vh;
-  border-radius: 16px;
-  background: #000;
-  outline: none;
+.story-index-indicator {
+  position: absolute;
+  top: -44px;
+  right: 0;
+  z-index: 30;
+  font-family: var(--font-tech);
+  font-size: 0.8rem;
+  color: var(--text-dim);
 }
 
+/* Reels-style container: video fills it edge-to-edge, everything else
+   (like button, caption) overlaid directly on top - no separate footer. */
+.story-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  max-height: 78vh;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #000;
+  border: 2px solid var(--neon);
+  box-shadow: 0 0 50px var(--neon-glow);
+  touch-action: pan-y; /* let vertical swipe reach our own gesture handler */
+}
+
+.story-video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  outline: none;
+  display: block;
+}
+
+/* Right-side floating action column, same spot Instagram puts it. */
+.story-side-actions {
+  position: absolute;
+  bottom: 70px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.story-like-btn {
+  background: transparent;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #fff;
+  font-family: var(--font-tech);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.story-like-btn svg { width: 32px; height: 32px; fill: none; stroke: #fff; stroke-width: 2; filter: drop-shadow(0 1px 4px rgba(0,0,0,0.8)); transition: fill 0.15s ease, stroke 0.15s ease; }
+.story-like-btn.liked svg { fill: #ff3b6e; stroke: #ff3b6e; }
+.story-like-btn:hover:not(:disabled) { transform: scale(1.08); }
+.story-like-btn:disabled { cursor: default; }
+.story-like-btn.pulsed svg { animation: likePulse 0.35s ease; }
+
 .story-caption {
-  margin-top: 14px;
-  font-size: 1.1rem;
-  font-weight: 800;
-  color: var(--neon);
-  text-shadow: 0 0 12px var(--neon-glow);
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  left: 60px;
+  z-index: 20;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
 }
 
 /* ---------- Hero Logo Story Badge Wrapper ---------- */

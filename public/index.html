@@ -131,6 +131,7 @@
       <button class="tab-btn" data-tab="instances">📡 מספרים (Instances)</button>
       <button class="tab-btn" data-tab="settings">⚙️ הגדרות מערכת</button>
       <button class="tab-btn" data-tab="leaderboard">🏆 לידרבורד</button>
+      <button class="tab-btn" data-tab="videos">🎬 סרטוני נהוראי</button>
       <button class="tab-btn" data-tab="documentation">📖 מדריך ומסמכי מערכת</button>
     </nav>
 
@@ -413,6 +414,34 @@
             </thead>
             <tbody id="leaderboard-table-body">
               <tr><td colspan="7" class="text-center">טוען צ'אטים...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel: Story Reel Videos -->
+      <div class="tab-content" id="tab-videos">
+        <div class="section-header">
+          <h2>🎬 סרטוני נהוראי (Story Reels)</h2>
+          <button class="btn btn-primary" id="btn-open-add-video-modal">+ רשום סרטון חדש</button>
+        </div>
+        <p class="section-desc">
+          הסרטונים שמוצגים בגלריית ה"סטורי" בעמוד הציבורי (לחיצה על תמונת הפרופיל של נהוראי). כדי להוסיף סרטון חדש,
+          תעלה קודם את קובץ ה-mp4 לתיקייה <code>public/nehorai/</code> בשרת, ואז תרשום אותו כאן עם שם הקובץ המדויק.
+        </p>
+        <div class="table-container">
+          <table class="contacts-table">
+            <thead>
+              <tr>
+                <th>שם קובץ</th>
+                <th>כיתוב</th>
+                <th>לייקים</th>
+                <th>פעיל</th>
+                <th>פעולות</th>
+              </tr>
+            </thead>
+            <tbody id="videos-table-body">
+              <tr><td colspan="5" class="text-center">טוען סרטונים...</td></tr>
             </tbody>
           </table>
         </div>
@@ -884,6 +913,35 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" id="btn-cancel-instance-modal">ביטול</button>
           <button type="submit" class="btn btn-primary">שמור מספר</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Register a story-reel video file -->
+  <div class="modal" id="video-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="video-modal-title">🎬 רישום סרטון חדש</h3>
+        <span class="modal-close" id="btn-close-video-modal">&times;</span>
+      </div>
+      <form id="video-form">
+        <input type="hidden" id="video-id">
+        <div class="form-group">
+          <label for="video-filename">שם הקובץ (חייב להיות כבר בתיקיית public/nehorai/):</label>
+          <input type="text" id="video-filename" placeholder="story8.mp4" required>
+        </div>
+        <div class="form-group">
+          <label for="video-caption">כיתוב (יוצג מתחת לסרטון בעמוד הציבורי):</label>
+          <input type="text" id="video-caption" placeholder="🔥 עוד סטורי של נהוראי" maxlength="120">
+        </div>
+        <div class="form-group-checkbox">
+          <input type="checkbox" id="video-enabled" checked>
+          <label for="video-enabled">מוצג בגלריה הציבורית</label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-cancel-video-modal">ביטול</button>
+          <button type="submit" class="btn btn-primary">שמור סרטון</button>
         </div>
       </form>
     </div>

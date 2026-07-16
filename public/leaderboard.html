@@ -24,13 +24,24 @@
     <div class="ambient-bg-slide" style="--desktop-pos: 50% 28%; --mobile-pos: 50% 26%; --mobile-start: 6% 26%; background-image: url('/nehorai/slide5.jpg')"></div>
   </div>
 
-  <!-- VIP Story Reels Modal -->
+  <!-- VIP Story Reels Modal - a gallery of Nehorai videos, Instagram Reels
+       style: vertical swipe/scroll to move between videos, like button and
+       caption overlaid directly on the video itself. -->
   <div class="nehorai-story-modal" id="nehorai-story-modal">
     <div class="story-modal-backdrop" id="story-modal-backdrop"></div>
     <div class="story-modal-content">
-      <button class="story-close-btn" id="story-close-btn">✖ סגור</button>
-      <video id="story-video" src="/nehorai/story1.mp4" playsinline controls preload="none"></video>
-      <div class="story-caption">🔥 הסטורי של נהוראי – לייב מהשכונה</div>
+      <button class="story-close-btn" id="story-close-btn">✖</button>
+      <div class="story-index-indicator" id="story-index-indicator"></div>
+      <div class="story-video-wrap" id="story-video-wrap">
+        <video id="story-video" playsinline preload="none"></video>
+        <div class="story-side-actions">
+          <button class="story-like-btn" id="story-like-btn">
+            <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 2 5 5.6 5 8 5 10 6.5 12 9c2-2.5 4-4 6.4-4C22 5 23.6 8.4 22 11.7 19.5 16.4 12 21 12 21z"/></svg>
+            <span id="story-like-count">0</span>
+          </button>
+        </div>
+        <div class="story-caption" id="story-caption-text"></div>
+      </div>
     </div>
   </div>
 

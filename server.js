@@ -960,6 +960,34 @@ app.post('/api/public/vote', voterIdentity, voteLimiter, async (req, res) => {
 });
 
 /**
+ * Public: list enabled story-reel videos (id, url, caption, voteCount only
+ * - see db.toPublicVideo).
+ */
+app.get('/api/public/videos', (req, res) => {
+  res.json(db.getPublicVideos());
+});
+
+/**
+ * Public: like a story-reel video. One like per (videoId, voterId), same
+ * voter cookie and rate limiter as chat voting.
+ */
+app.post('/api/public/videos/vote', voterIdentity, voteLimiter, async (req, res) => {
+  try {
+    const { videoId } = req.body;
+    if (!videoId) {
+      return res.status(400).json({ error: 'videoId is required' });
+    }
+    const result = await db.recordVideoVote(videoId, req.voterId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const status = err.message === 'Already voted for this video' ? 409
+      : err.message.startsWith('Video not found') ? 404
+      : 400;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+/**
  * Public: signup form config - conversation topics (global) and a coarse
  * "bot status" (night rest / weekend) computed server-side from Israel
  * local time, since a visitor's own browser clock/timezone can't be
@@ -1156,6 +1184,43 @@ app.post('/api/admin/chats/:id/archive', requireAdmin, async (req, res) => {
   try {
     const updated = await db.archiveChat(req.params.id);
     res.json({ success: true, chat: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin: story-reel video gallery CRUD. Registers a filename already
+ * dropped into public/nehorai/ - this route does not accept file uploads
+ * itself.
+ */
+app.get('/api/admin/videos', requireAdmin, (req, res) => {
+  res.json(db.getVideos());
+});
+
+app.post('/api/admin/videos', requireAdmin, async (req, res) => {
+  try {
+    const { filename, caption } = req.body;
+    const newVideo = await db.addVideo({ filename, caption });
+    res.json({ success: true, video: newVideo });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/videos/:id', requireAdmin, async (req, res) => {
+  try {
+    const updated = await db.updateVideo(req.params.id, req.body);
+    res.json({ success: true, video: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/videos/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.deleteVideo(req.params.id);
+    res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

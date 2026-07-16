@@ -447,37 +447,168 @@ function setupAmbientSlideshow() {
   }, 24500);
 }
 
-// ---------- VIP Story Reels Modal ----------
+// ---------- VIP Story Reels Modal (video gallery) ----------
+
+const LIKED_VIDEOS_STORAGE_KEY = 'nehoraiLikedVideoIds';
+let storyVideos = [];
+let currentVideoIndex = 0;
+
+function getLikedVideoSet() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(LIKED_VIDEOS_STORAGE_KEY) || '[]'));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function markVideoLiked(videoId) {
+  const set = getLikedVideoSet();
+  set.add(videoId);
+  localStorage.setItem(LIKED_VIDEOS_STORAGE_KEY, JSON.stringify([...set]));
+}
+
+async function fetchStoryVideos() {
+  try {
+    const res = await fetch('/api/public/videos');
+    storyVideos = await res.json();
+  } catch (err) {
+    storyVideos = [];
+  }
+}
 
 function setupStoryModal() {
   const trigger = document.getElementById('hero-story-trigger');
   const modal = document.getElementById('nehorai-story-modal');
   const closeBtn = document.getElementById('story-close-btn');
   const backdrop = document.getElementById('story-modal-backdrop');
-  const storyVideo = document.getElementById('story-video');
+  const videoWrap = document.getElementById('story-video-wrap');
+  const storyVideoEl = document.getElementById('story-video');
+  const likeBtn = document.getElementById('story-like-btn');
+  const captionEl = document.getElementById('story-caption-text');
+  const likeCountEl = document.getElementById('story-like-count');
+  const indexEl = document.getElementById('story-index-indicator');
 
-  if (!trigger || !modal || !storyVideo) return;
+  if (!trigger || !modal || !storyVideoEl) return;
 
-  const openStory = () => {
-    modal.classList.add('active');
-    storyVideo.currentTime = 0;
-    const p = storyVideo.play();
+  const playCurrent = () => {
+    storyVideoEl.currentTime = 0;
+    const p = storyVideoEl.play();
     if (p !== undefined) {
       p.catch(() => {
-        storyVideo.muted = true;
-        storyVideo.play().catch(() => {});
+        storyVideoEl.muted = true;
+        storyVideoEl.play().catch(() => {});
       });
     }
   };
 
+  const renderCurrent = () => {
+    const video = storyVideos[currentVideoIndex];
+    if (!video) return;
+    storyVideoEl.src = video.url;
+    captionEl.textContent = video.caption || '';
+    likeCountEl.textContent = video.voteCount;
+    indexEl.textContent = `${currentVideoIndex + 1} / ${storyVideos.length}`;
+
+    const liked = getLikedVideoSet().has(video.id);
+    likeBtn.classList.toggle('liked', liked);
+    likeBtn.disabled = liked;
+    playCurrent();
+  };
+
+  const goToIndex = (idx) => {
+    if (!storyVideos.length) return;
+    currentVideoIndex = (idx + storyVideos.length) % storyVideos.length;
+    renderCurrent();
+  };
+
+  const openStory = async () => {
+    if (!storyVideos.length) await fetchStoryVideos();
+    if (!storyVideos.length) return; // nothing to show
+    currentVideoIndex = 0;
+    modal.classList.add('active');
+    renderCurrent();
+  };
+
   const closeStory = () => {
     modal.classList.remove('active');
-    storyVideo.pause();
+    storyVideoEl.pause();
+  };
+
+  const castVideoLike = async () => {
+    const video = storyVideos[currentVideoIndex];
+    if (!video || likeBtn.disabled) return;
+    likeBtn.disabled = true;
+    likeBtn.classList.add('liked', 'pulsed');
+    setTimeout(() => likeBtn.classList.remove('pulsed'), 350);
+
+    try {
+      const res = await fetch('/api/public/videos/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: video.id })
+      });
+      if (res.ok || res.status === 409) {
+        markVideoLiked(video.id);
+        video.voteCount += res.ok ? 1 : 0;
+        likeCountEl.textContent = video.voteCount;
+      } else {
+        likeBtn.disabled = false;
+        likeBtn.classList.remove('liked');
+      }
+    } catch (err) {
+      likeBtn.disabled = false;
+      likeBtn.classList.remove('liked');
+    }
   };
 
   trigger.addEventListener('click', openStory);
   if (closeBtn) closeBtn.addEventListener('click', closeStory);
   if (backdrop) backdrop.addEventListener('click', closeStory);
+  if (likeBtn) likeBtn.addEventListener('click', castVideoLike);
+
+  // Reels-style tap-to-pause/resume, since native <video> controls are
+  // deliberately off to keep the like button and caption unobstructed.
+  storyVideoEl.addEventListener('click', () => {
+    if (storyVideoEl.paused) storyVideoEl.play().catch(() => {});
+    else storyVideoEl.pause();
+  });
+
+  // Vertical swipe navigation (touch) - swipe up = next, swipe down =
+  // previous, same direction convention as scrolling through a feed.
+  let touchStartY = null;
+  videoWrap.addEventListener('touchstart', (e) => {
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  videoWrap.addEventListener('touchend', (e) => {
+    if (touchStartY === null) return;
+    const deltaY = touchStartY - e.changedTouches[0].clientY;
+    touchStartY = null;
+    const SWIPE_THRESHOLD = 40;
+    if (deltaY > SWIPE_THRESHOLD) goToIndex(currentVideoIndex + 1);
+    else if (deltaY < -SWIPE_THRESHOLD) goToIndex(currentVideoIndex - 1);
+  }, { passive: true });
+
+  // Mouse-wheel / trackpad navigation for desktop, debounced so one
+  // physical scroll gesture (many wheel events) only moves one video.
+  let wheelLocked = false;
+  videoWrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (wheelLocked) return;
+    wheelLocked = true;
+    setTimeout(() => { wheelLocked = false; }, 450);
+    if (e.deltaY > 0) goToIndex(currentVideoIndex + 1);
+    else if (e.deltaY < 0) goToIndex(currentVideoIndex - 1);
+  }, { passive: false });
+
+  document.addEventListener('keydown', (e) => {
+    if (!modal.classList.contains('active')) return;
+    if (e.key === 'ArrowUp') goToIndex(currentVideoIndex - 1);
+    if (e.key === 'ArrowDown') goToIndex(currentVideoIndex + 1);
+    if (e.key === 'Escape') closeStory();
+  });
+
+  // Warm the video list in the background so the first tap opens instantly.
+  fetchStoryVideos();
 }
 
 // ---------- Docs tabs ----------

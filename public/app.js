@@ -46,6 +46,7 @@ let isAdmin = false;
 let contactsList = [];
 let logsList = [];
 let leaderboardChats = [];
+let videosList = [];
 let systemStatus = {};
 let adminSecrets = { geminiApiKey: '' };
 let simulatorHistory = [];
@@ -124,6 +125,15 @@ document.addEventListener('DOMContentLoaded', () => {
   if (closeInstanceModalBtn) closeInstanceModalBtn.addEventListener('click', () => instanceModal.classList.remove('open'));
   if (cancelInstanceModalBtn) cancelInstanceModalBtn.addEventListener('click', () => instanceModal.classList.remove('open'));
   if (instanceForm) instanceForm.addEventListener('submit', handleInstanceFormSubmit);
+
+  // Videos tab
+  const openAddVideoModalBtn = document.getElementById('btn-open-add-video-modal');
+  const closeVideoModalBtn = document.getElementById('btn-close-video-modal');
+  const cancelVideoModalBtn = document.getElementById('btn-cancel-video-modal');
+  if (openAddVideoModalBtn) openAddVideoModalBtn.addEventListener('click', openAddVideoModal);
+  if (closeVideoModalBtn) closeVideoModalBtn.addEventListener('click', () => videoModal.classList.remove('open'));
+  if (cancelVideoModalBtn) cancelVideoModalBtn.addEventListener('click', () => videoModal.classList.remove('open'));
+  if (videoForm) videoForm.addEventListener('submit', handleVideoFormSubmit);
 
   const instanceSelector = document.getElementById('instance-selector');
   if (instanceSelector) {
@@ -258,6 +268,7 @@ function updateAdminUI() {
   const instancesTabBtn = document.querySelector('.tab-btn[data-tab="instances"]');
   const addContactBtn = document.getElementById('btn-open-add-contact-modal');
   const addInstanceBtn = document.getElementById('btn-open-add-instance-modal');
+  const addVideoBtn = document.getElementById('btn-open-add-video-modal');
   const triggerStoryBtn = document.getElementById('btn-post-status');
   const resetBtn = document.getElementById('btn-reset-data');
   const livechatForm = document.getElementById('livechat-send-form');
@@ -273,6 +284,7 @@ function updateAdminUI() {
     if (instancesTabBtn) instancesTabBtn.style.display = '';
     if (addContactBtn) addContactBtn.style.display = '';
     if (addInstanceBtn) addInstanceBtn.style.display = '';
+    if (addVideoBtn) addVideoBtn.style.display = '';
     if (triggerStoryBtn) triggerStoryBtn.style.display = '';
     if (resetBtn) resetBtn.style.display = '';
     if (livechatForm) livechatForm.style.display = '';
@@ -298,6 +310,7 @@ function updateAdminUI() {
     }
     if (addContactBtn) addContactBtn.style.display = 'none';
     if (addInstanceBtn) addInstanceBtn.style.display = 'none';
+    if (addVideoBtn) addVideoBtn.style.display = 'none';
     if (triggerStoryBtn) triggerStoryBtn.style.display = 'none';
     if (resetBtn) resetBtn.style.display = 'none';
     if (livechatForm) livechatForm.style.display = 'none';
@@ -313,7 +326,8 @@ async function loadData() {
     fetchContacts(),
     fetchLogs(),
     fetchLeaderboardChats(),
-    fetchActiveChatMessages()
+    fetchActiveChatMessages(),
+    fetchVideos()
   ]);
   updateLiveChatUI();
   updateAdminUI();
@@ -328,6 +342,7 @@ async function pollRealtimeData() {
     await fetchLogs();
     await fetchLeaderboardChats();
     await fetchActiveChatMessages();
+    await fetchVideos();
     updateLiveChatUI();
     updateAdminUI();
   } catch (err) {
@@ -402,6 +417,15 @@ async function fetchLeaderboardChats() {
     leaderboardChats = [];
   }
   updateLeaderboardUI();
+}
+
+async function fetchVideos() {
+  try {
+    videosList = await fetchAPI('/api/admin/videos', { silentAuth: true });
+  } catch (e) {
+    videosList = [];
+  }
+  updateVideosUI();
 }
 
 // Populates both the overview "which number's stats am I looking at"
@@ -645,6 +669,116 @@ async function handleInstanceFormSubmit(e) {
     }
     instanceModal.classList.remove('open');
     await fetchInstances();
+  } catch (err) {
+    // Already handled by fetchAPI
+  }
+}
+
+// ---- Story Reel Videos tab ----
+
+function updateVideosUI() {
+  const tbody = document.getElementById('videos-table-body');
+  if (!tbody) return;
+
+  if (videosList.length === 0) {
+    const emptyHtml = `<tr><td colspan="5" class="text-center text-muted italic">אין עדיין סרטונים רשומים.</td></tr>`;
+    if (tbody.innerHTML !== emptyHtml) tbody.innerHTML = emptyHtml;
+    return;
+  }
+
+  let html = '';
+  videosList.forEach(video => {
+    html += `
+      <tr>
+        <td><code>${escapeHtml(video.filename)}</code></td>
+        <td>${escapeHtml(video.caption || '-')}</td>
+        <td>${video.voteCount}</td>
+        <td>
+          <label class="toggle-switch">
+            <input type="checkbox" ${video.enabled ? 'checked' : ''} onchange="toggleVideoEnabled('${video.id}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td>
+        <td>
+          <div class="actions-cell">
+            <button class="btn btn-sm btn-outline" onclick="openEditVideoModal('${video.id}')" title="עריכה">ערוך ✏️</button>
+            <button class="btn btn-sm btn-outline" style="border-color: rgba(239, 68, 68, 0.3); color: #fca5a5" onclick="deleteVideo('${video.id}')" title="מחק">מחק 🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  if (tbody.innerHTML !== html) {
+    tbody.innerHTML = html;
+  }
+}
+
+window.toggleVideoEnabled = async function(id, enabled) {
+  try {
+    await fetchAPI(`/api/admin/videos/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+    showNotification('הסרטון עודכן.', 'success');
+    await fetchVideos();
+  } catch (err) {
+    await fetchVideos(); // revert the checkbox to the real server state
+  }
+};
+
+window.deleteVideo = async function(id) {
+  if (!confirm('למחוק את רישום הסרטון הזה? קובץ ה-mp4 עצמו יישאר על השרת, רק הרישום יימחק.')) return;
+  try {
+    await fetchAPI(`/api/admin/videos/${id}`, { method: 'DELETE' });
+    showNotification('הסרטון נמחק.', 'success');
+    await fetchVideos();
+  } catch (err) {
+    // handled
+  }
+};
+
+const videoModal = document.getElementById('video-modal');
+const videoForm = document.getElementById('video-form');
+
+function openAddVideoModal() {
+  videoForm.reset();
+  document.getElementById('video-id').value = '';
+  document.getElementById('video-modal-title').textContent = '🎬 רישום סרטון חדש';
+  videoModal.classList.add('open');
+}
+
+window.openEditVideoModal = async function(id) {
+  const video = videosList.find(v => v.id === id);
+  if (!video) return;
+
+  videoForm.reset();
+  document.getElementById('video-id').value = video.id;
+  document.getElementById('video-modal-title').textContent = `✏️ עריכת סרטון: ${video.filename}`;
+  document.getElementById('video-filename').value = video.filename;
+  document.getElementById('video-caption').value = video.caption || '';
+  document.getElementById('video-enabled').checked = video.enabled;
+
+  videoModal.classList.add('open');
+};
+
+async function handleVideoFormSubmit(e) {
+  e.preventDefault();
+
+  const id = document.getElementById('video-id').value;
+  const payload = {
+    filename: document.getElementById('video-filename').value.trim(),
+    caption: document.getElementById('video-caption').value.trim(),
+    enabled: document.getElementById('video-enabled').checked
+  };
+
+  try {
+    if (id) {
+      await fetchAPI(`/api/admin/videos/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showNotification('הסרטון עודכן בהצלחה!', 'success');
+    } else {
+      await fetchAPI('/api/admin/videos', { method: 'POST', body: JSON.stringify(payload) });
+      showNotification('הסרטון נרשם בהצלחה!', 'success');
+    }
+    videoModal.classList.remove('open');
+    await fetchVideos();
   } catch (err) {
     // Already handled by fetchAPI
   }
