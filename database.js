@@ -993,6 +993,30 @@ class JSONDatabase {
 
     return { videoId, voteCount: video.voteCount };
   }
+
+  // Unlike - the video like button is a real on/off toggle (unlike the chat
+  // leaderboard's one-way vote), so this is the inverse of recordVideoVote.
+  async removeVideoVote(videoId, voterId) {
+    const video = this.getVideoById(videoId);
+    if (!video) {
+      throw new Error(`Video not found: ${videoId}`);
+    }
+
+    const idx = this.videoVotes.findIndex(v => v.videoId === videoId && v.voterId === voterId);
+    if (idx === -1) {
+      throw new Error('No vote to remove for this video');
+    }
+
+    this.videoVotes.splice(idx, 1);
+    video.voteCount = Math.max(0, video.voteCount - 1);
+
+    await Promise.all([
+      this._saveFile('videoVotes.json', this.videoVotes),
+      this._saveFile('videos.json', this.videos)
+    ]);
+
+    return { videoId, voteCount: video.voteCount };
+  }
 }
 
 const db = new JSONDatabase();

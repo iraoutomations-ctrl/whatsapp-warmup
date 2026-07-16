@@ -301,8 +301,8 @@ body.reveal-active .container {
   color: var(--text-dim);
 }
 
-/* Reels-style container: video fills it edge-to-edge, everything else
-   (like button, caption) overlaid directly on top - no separate footer. */
+/* Clipping viewport for the reel scroller - fixed size/shape, everything
+   scrollable lives inside .story-reel-scroller. */
 .story-video-wrap {
   position: relative;
   width: 100%;
@@ -313,16 +313,66 @@ body.reveal-active .container {
   background: #000;
   border: 2px solid var(--neon);
   box-shadow: 0 0 50px var(--neon-glow);
-  touch-action: pan-y; /* let vertical swipe reach our own gesture handler */
 }
 
-.story-video-wrap video {
+/* Native vertical scroll-snap - one full-size slide per video. This
+   replaces manual swipe/wheel delta tracking with real browser scroll
+   physics: the browser itself guarantees every gesture lands exactly on
+   a slide boundary, never stopping halfway between two videos. */
+.story-reel-scroller {
+  width: 100%;
+  height: 100%;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.story-reel-scroller::-webkit-scrollbar { display: none; }
+
+.story-reel-item {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  background: #000;
+}
+
+.story-reel-item video {
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #000;
   outline: none;
   display: block;
+}
+
+/* Center heart shown briefly on double-tap, Instagram-style - not the
+   persistent like-button state, just tap feedback. */
+.story-heart-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.4);
+  z-index: 25;
+  opacity: 0;
+  pointer-events: none;
+}
+.story-heart-burst svg {
+  width: 92px;
+  height: 92px;
+  fill: rgba(255, 255, 255, 0.95);
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.6));
+}
+.story-heart-burst.burst-active { animation: heartBurst 0.7s cubic-bezier(0.2, 0.8, 0.3, 1); }
+@keyframes heartBurst {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  28%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  45%  { transform: translate(-50%, -50%) scale(0.95); }
+  60%  { transform: translate(-50%, -50%) scale(1.05); }
+  80%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 }
 
 /* Right-side floating action column, same spot Instagram puts it. */
@@ -353,8 +403,7 @@ body.reveal-active .container {
 }
 .story-like-btn svg { width: 32px; height: 32px; fill: none; stroke: #fff; stroke-width: 2; filter: drop-shadow(0 1px 4px rgba(0,0,0,0.8)); transition: fill 0.15s ease, stroke 0.15s ease; }
 .story-like-btn.liked svg { fill: #ff3b6e; stroke: #ff3b6e; }
-.story-like-btn:hover:not(:disabled) { transform: scale(1.08); }
-.story-like-btn:disabled { cursor: default; }
+.story-like-btn:hover { transform: scale(1.08); }
 .story-like-btn.pulsed svg { animation: likePulse 0.35s ease; }
 
 .story-caption {

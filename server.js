@@ -988,6 +988,26 @@ app.post('/api/public/videos/vote', voterIdentity, voteLimiter, async (req, res)
 });
 
 /**
+ * Public: unlike a story-reel video (the video like button is a real
+ * on/off toggle, unlike chat voting which is one-way).
+ */
+app.delete('/api/public/videos/vote', voterIdentity, voteLimiter, async (req, res) => {
+  try {
+    const { videoId } = req.body;
+    if (!videoId) {
+      return res.status(400).json({ error: 'videoId is required' });
+    }
+    const result = await db.removeVideoVote(videoId, req.voterId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const status = err.message === 'No vote to remove for this video' ? 409
+      : err.message.startsWith('Video not found') ? 404
+      : 400;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+/**
  * Public: signup form config - conversation topics (global) and a coarse
  * "bot status" (night rest / weekend) computed server-side from Israel
  * local time, since a visitor's own browser clock/timezone can't be

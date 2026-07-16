@@ -447,11 +447,15 @@ function setupAmbientSlideshow() {
   }, 24500);
 }
 
-// ---------- VIP Story Reels Modal (video gallery) ----------
+// ---------- VIP Story Reels Modal (video gallery, TikTok/Reels style) ----------
 
 const LIKED_VIDEOS_STORAGE_KEY = 'nehoraiLikedVideoIds';
+const DOUBLE_TAP_MS = 300;
+const HEART_SVG_PATH = 'M12 21s-7.5-4.6-10-9.3C.4 8.4 2 5 5.6 5 8 5 10 6.5 12 9c2-2.5 4-4 6.4-4C22 5 23.6 8.4 22 11.7 19.5 16.4 12 21 12 21z';
+
 let storyVideos = [];
 let currentVideoIndex = 0;
+let reelObserver = null;
 
 function getLikedVideoSet() {
   try {
@@ -467,6 +471,12 @@ function markVideoLiked(videoId) {
   localStorage.setItem(LIKED_VIDEOS_STORAGE_KEY, JSON.stringify([...set]));
 }
 
+function unmarkVideoLiked(videoId) {
+  const set = getLikedVideoSet();
+  set.delete(videoId);
+  localStorage.setItem(LIKED_VIDEOS_STORAGE_KEY, JSON.stringify([...set]));
+}
+
 async function fetchStoryVideos() {
   try {
     const res = await fetch('/api/public/videos');
@@ -476,135 +486,188 @@ async function fetchStoryVideos() {
   }
 }
 
+function renderReelItemHtml(video, index) {
+  const liked = getLikedVideoSet().has(video.id);
+  return `
+    <div class="story-reel-item" data-index="${index}" data-video-id="${escapeHtml(video.id)}">
+      <video playsinline preload="none" src="${escapeHtml(video.url)}"></video>
+      <div class="story-heart-burst"><svg viewBox="0 0 24 24"><path d="${HEART_SVG_PATH}"/></svg></div>
+      <div class="story-side-actions">
+        <button class="story-like-btn ${liked ? 'liked' : ''}">
+          <svg viewBox="0 0 24 24"><path d="${HEART_SVG_PATH}"/></svg>
+          <span class="story-like-count">${video.voteCount}</span>
+        </button>
+      </div>
+      <div class="story-caption">${escapeHtml(video.caption || '')}</div>
+    </div>
+  `;
+}
+
 function setupStoryModal() {
   const trigger = document.getElementById('hero-story-trigger');
   const modal = document.getElementById('nehorai-story-modal');
   const closeBtn = document.getElementById('story-close-btn');
   const backdrop = document.getElementById('story-modal-backdrop');
-  const videoWrap = document.getElementById('story-video-wrap');
-  const storyVideoEl = document.getElementById('story-video');
-  const likeBtn = document.getElementById('story-like-btn');
-  const captionEl = document.getElementById('story-caption-text');
-  const likeCountEl = document.getElementById('story-like-count');
+  const scroller = document.getElementById('story-reel-scroller');
   const indexEl = document.getElementById('story-index-indicator');
 
-  if (!trigger || !modal || !storyVideoEl) return;
+  if (!trigger || !modal || !scroller) return;
 
-  const playCurrent = () => {
-    storyVideoEl.currentTime = 0;
-    const p = storyVideoEl.play();
-    if (p !== undefined) {
-      p.catch(() => {
-        storyVideoEl.muted = true;
-        storyVideoEl.play().catch(() => {});
-      });
-    }
+  // A real on/off toggle - "liked" here means "this browser's vote is
+  // currently recorded server-side", so it always reflects that truth
+  // rather than a one-way "already voted, can never undo" flag.
+  const setLikeButtonState = (item, liked, voteCount) => {
+    const btn = item.querySelector('.story-like-btn');
+    btn.classList.toggle('liked', liked);
+    btn.querySelector('.story-like-count').textContent = voteCount;
   };
 
-  const renderCurrent = () => {
-    const video = storyVideos[currentVideoIndex];
+  const likeVideo = async (item, videoId) => {
+    const video = storyVideos.find(v => v.id === videoId);
     if (!video) return;
-    storyVideoEl.src = video.url;
-    captionEl.textContent = video.caption || '';
-    likeCountEl.textContent = video.voteCount;
-    indexEl.textContent = `${currentVideoIndex + 1} / ${storyVideos.length}`;
-
-    const liked = getLikedVideoSet().has(video.id);
-    likeBtn.classList.toggle('liked', liked);
-    likeBtn.disabled = liked;
-    playCurrent();
-  };
-
-  const goToIndex = (idx) => {
-    if (!storyVideos.length) return;
-    currentVideoIndex = (idx + storyVideos.length) % storyVideos.length;
-    renderCurrent();
-  };
-
-  const openStory = async () => {
-    if (!storyVideos.length) await fetchStoryVideos();
-    if (!storyVideos.length) return; // nothing to show
-    currentVideoIndex = 0;
-    modal.classList.add('active');
-    renderCurrent();
-  };
-
-  const closeStory = () => {
-    modal.classList.remove('active');
-    storyVideoEl.pause();
-  };
-
-  const castVideoLike = async () => {
-    const video = storyVideos[currentVideoIndex];
-    if (!video || likeBtn.disabled) return;
-    likeBtn.disabled = true;
-    likeBtn.classList.add('liked', 'pulsed');
-    setTimeout(() => likeBtn.classList.remove('pulsed'), 350);
+    const btn = item.querySelector('.story-like-btn');
+    btn.classList.add('liked', 'pulsed');
+    setTimeout(() => btn.classList.remove('pulsed'), 350);
 
     try {
       const res = await fetch('/api/public/videos/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId: video.id })
+        body: JSON.stringify({ videoId })
       });
       if (res.ok || res.status === 409) {
-        markVideoLiked(video.id);
-        video.voteCount += res.ok ? 1 : 0;
-        likeCountEl.textContent = video.voteCount;
+        markVideoLiked(videoId);
+        if (res.ok) video.voteCount += 1;
+        setLikeButtonState(item, true, video.voteCount);
       } else {
-        likeBtn.disabled = false;
-        likeBtn.classList.remove('liked');
+        setLikeButtonState(item, false, video.voteCount);
       }
     } catch (err) {
-      likeBtn.disabled = false;
-      likeBtn.classList.remove('liked');
+      setLikeButtonState(item, false, video.voteCount);
     }
+  };
+
+  const unlikeVideo = async (item, videoId) => {
+    const video = storyVideos.find(v => v.id === videoId);
+    if (!video) return;
+    const btn = item.querySelector('.story-like-btn');
+    btn.classList.remove('liked');
+
+    try {
+      const res = await fetch('/api/public/videos/vote', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId })
+      });
+      if (res.ok || res.status === 409) {
+        unmarkVideoLiked(videoId);
+        if (res.ok) video.voteCount = Math.max(0, video.voteCount - 1);
+        setLikeButtonState(item, false, video.voteCount);
+      } else {
+        setLikeButtonState(item, true, video.voteCount);
+      }
+    } catch (err) {
+      setLikeButtonState(item, true, video.voteCount);
+    }
+  };
+
+  const showHeartBurst = (item) => {
+    const burst = item.querySelector('.story-heart-burst');
+    burst.classList.remove('burst-active');
+    void burst.offsetWidth; // force reflow so the animation can restart
+    burst.classList.add('burst-active');
+  };
+
+  // ---- Tap disambiguation: single tap = play/pause, double tap = like ----
+  let pendingTapTimer = null;
+  let lastTapTime = 0;
+  let lastTapVideoId = null;
+
+  scroller.addEventListener('click', (e) => {
+    const item = e.target.closest('.story-reel-item');
+    if (!item) return;
+    const videoId = item.dataset.videoId;
+
+    // Like-button click: independent of tap timing, a plain toggle.
+    if (e.target.closest('.story-like-btn')) {
+      const alreadyLiked = item.querySelector('.story-like-btn').classList.contains('liked');
+      if (alreadyLiked) unlikeVideo(item, videoId);
+      else likeVideo(item, videoId);
+      return;
+    }
+
+    const now = Date.now();
+    if (lastTapVideoId === videoId && now - lastTapTime < DOUBLE_TAP_MS) {
+      // Double tap: cancel the pending single-tap play/pause, like (never
+      // unlike - matches Instagram's own double-tap semantics) + burst.
+      clearTimeout(pendingTapTimer);
+      lastTapTime = 0;
+      lastTapVideoId = null;
+      showHeartBurst(item);
+      const alreadyLiked = item.querySelector('.story-like-btn').classList.contains('liked');
+      if (!alreadyLiked) likeVideo(item, videoId);
+      return;
+    }
+
+    lastTapTime = now;
+    lastTapVideoId = videoId;
+    pendingTapTimer = setTimeout(() => {
+      const video = item.querySelector('video');
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    }, DOUBLE_TAP_MS);
+  });
+
+  // ---- Native scroll-snap drives navigation; IntersectionObserver just
+  // tracks which slide is actually in view to play/pause the right video
+  // and keep the index indicator honest. ----
+  const setupReelObserver = () => {
+    if (reelObserver) reelObserver.disconnect();
+    reelObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const video = entry.target.querySelector('video');
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          currentVideoIndex = parseInt(entry.target.dataset.index, 10);
+          indexEl.textContent = `${currentVideoIndex + 1} / ${storyVideos.length}`;
+          video.currentTime = 0;
+          const p = video.play();
+          if (p !== undefined) p.catch(() => { video.muted = true; video.play().catch(() => {}); });
+        } else {
+          video.pause();
+        }
+      });
+    }, { root: scroller, threshold: [0, 0.6, 1] });
+
+    scroller.querySelectorAll('.story-reel-item').forEach(item => reelObserver.observe(item));
+  };
+
+  const openStory = async () => {
+    if (!storyVideos.length) await fetchStoryVideos();
+    if (!storyVideos.length) return; // nothing to show
+    scroller.innerHTML = storyVideos.map((v, i) => renderReelItemHtml(v, i)).join('');
+    scroller.scrollTop = 0;
+    currentVideoIndex = 0;
+    indexEl.textContent = `1 / ${storyVideos.length}`;
+    modal.classList.add('active');
+    setupReelObserver();
+  };
+
+  const closeStory = () => {
+    modal.classList.remove('active');
+    scroller.querySelectorAll('video').forEach(v => v.pause());
   };
 
   trigger.addEventListener('click', openStory);
   if (closeBtn) closeBtn.addEventListener('click', closeStory);
   if (backdrop) backdrop.addEventListener('click', closeStory);
-  if (likeBtn) likeBtn.addEventListener('click', castVideoLike);
-
-  // Reels-style tap-to-pause/resume, since native <video> controls are
-  // deliberately off to keep the like button and caption unobstructed.
-  storyVideoEl.addEventListener('click', () => {
-    if (storyVideoEl.paused) storyVideoEl.play().catch(() => {});
-    else storyVideoEl.pause();
-  });
-
-  // Vertical swipe navigation (touch) - swipe up = next, swipe down =
-  // previous, same direction convention as scrolling through a feed.
-  let touchStartY = null;
-  videoWrap.addEventListener('touchstart', (e) => {
-    touchStartY = e.touches[0].clientY;
-  }, { passive: true });
-  videoWrap.addEventListener('touchend', (e) => {
-    if (touchStartY === null) return;
-    const deltaY = touchStartY - e.changedTouches[0].clientY;
-    touchStartY = null;
-    const SWIPE_THRESHOLD = 40;
-    if (deltaY > SWIPE_THRESHOLD) goToIndex(currentVideoIndex + 1);
-    else if (deltaY < -SWIPE_THRESHOLD) goToIndex(currentVideoIndex - 1);
-  }, { passive: true });
-
-  // Mouse-wheel / trackpad navigation for desktop, debounced so one
-  // physical scroll gesture (many wheel events) only moves one video.
-  let wheelLocked = false;
-  videoWrap.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    if (wheelLocked) return;
-    wheelLocked = true;
-    setTimeout(() => { wheelLocked = false; }, 450);
-    if (e.deltaY > 0) goToIndex(currentVideoIndex + 1);
-    else if (e.deltaY < 0) goToIndex(currentVideoIndex - 1);
-  }, { passive: false });
 
   document.addEventListener('keydown', (e) => {
     if (!modal.classList.contains('active')) return;
-    if (e.key === 'ArrowUp') goToIndex(currentVideoIndex - 1);
-    if (e.key === 'ArrowDown') goToIndex(currentVideoIndex + 1);
-    if (e.key === 'Escape') closeStory();
+    if (e.key === 'Escape') { closeStory(); return; }
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const targetIdx = Math.max(0, Math.min(storyVideos.length - 1, currentVideoIndex + (e.key === 'ArrowDown' ? 1 : -1)));
+    const item = scroller.children[targetIdx];
+    if (item) item.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   // Warm the video list in the background so the first tap opens instantly.
